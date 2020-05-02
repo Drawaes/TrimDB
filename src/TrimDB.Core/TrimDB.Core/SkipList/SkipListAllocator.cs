@@ -6,9 +6,9 @@ namespace TrimDB.Core.SkipList
 {
     public abstract class SkipListAllocator : IDisposable
     {
-        protected readonly SkipListHeighGenerator _heightGenerator;
+        protected readonly SkipListHeightGenerator _heightGenerator;
 
-        protected SkipListAllocator(byte maxHeight) => _heightGenerator = new SkipListHeighGenerator(maxHeight);
+        protected SkipListAllocator(byte maxHeight) => _heightGenerator = new SkipListHeightGenerator(maxHeight);
 
         public byte MaxHeight => _heightGenerator.MaxHeight;
         public byte CurrentHeight => _heightGenerator.CurrentHeight;
