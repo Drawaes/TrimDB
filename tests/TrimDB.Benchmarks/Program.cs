@@ -13,9 +13,7 @@ namespace TrimDB.Benchmarks
             //sl.GlobalSetup();
             //await sl.MultiThreaded();
 
-            var summary = BenchmarkRunner.Run<SkipListInsert>();
-
-
+            var summary = BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
         }
     }
 }
