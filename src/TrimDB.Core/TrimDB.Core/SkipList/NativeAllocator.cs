@@ -12,7 +12,7 @@ namespace TrimDB.Core.SkipList
     {
         private IntPtr _pointer;
         private long _currentPointer;
-        private const int ALIGNMENTSIZE = 8;
+        private const int ALIGNMENTSIZE = 64;
         private long _maxSize;
 
         public override SkipListNode HeadNode => GetNode(ALIGNMENTSIZE);

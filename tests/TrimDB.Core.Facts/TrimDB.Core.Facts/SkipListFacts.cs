@@ -82,13 +82,13 @@ namespace TrimDB.Core.Facts
             skipList.Put(string2, value2);
 
             var result = skipList.TryGet(string1, out var rValue1);
-            Assert.Equal(SkipList.SkipList.SkipListResult.Found, result);
+            Assert.Equal(SearchResult.Found, result);
 
             var result2 = skipList.TryGet(string2, out var rValue2);
-            Assert.Equal(SkipList.SkipList.SkipListResult.Found, result2);
+            Assert.Equal(SearchResult.Found, result2);
 
             var result3 = skipList.TryGet(string3, out var rValue3);
-            Assert.Equal(SkipList.SkipList.SkipListResult.NotFound, result3);
+            Assert.Equal(SearchResult.NotFound, result3);
         }
     }
 }

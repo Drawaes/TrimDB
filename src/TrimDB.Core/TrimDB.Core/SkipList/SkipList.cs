@@ -14,8 +14,6 @@ namespace TrimDB.Core.SkipList
             _allocator = allocator;
         }
 
-
-
         public bool Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
         {
             var valueLocation = _allocator.AllocateValue(value);
@@ -25,8 +23,8 @@ namespace TrimDB.Core.SkipList
             }
 
             var height = _allocator.CurrentHeight;
-            var previous = new long[_allocator.MaxHeight + 1]; ;
-            var next = new long[previous.Length];
+            var previous = (Span<long>)stackalloc long[_allocator.MaxHeight + 1];
+            var next = (Span<long>)stackalloc long[previous.Length];
 
             previous[height] = _allocator.HeadNode.Location;
             next[height] = 0;
@@ -113,15 +111,21 @@ namespace TrimDB.Core.SkipList
             }
         }
 
-        public void Delete(ReadOnlySpan<byte> key)
-        {
-            throw new NotImplementedException();
-        }
-
-        public SkipListResult TryGet(ReadOnlySpan<byte> key, out ReadOnlySpan<byte> value)
+        public bool Delete(ReadOnlySpan<byte> key)
         {
             var result = Search(key, out var nextNode);
-            if (result == SkipListResult.Found)
+            if(result == SearchResult.Found)
+            {
+                nextNode.SetDeleted();
+                return true;
+            }
+            return false;
+        }
+
+        public SearchResult TryGet(ReadOnlySpan<byte> key, out ReadOnlySpan<byte> value)
+        {
+            var result = Search(key, out var nextNode);
+            if (result == SearchResult.Found)
             {
                 value = _allocator.GetValue(nextNode.ValueLocation);
             }
@@ -132,7 +136,7 @@ namespace TrimDB.Core.SkipList
             return result;
         }
 
-        private SkipListResult Search(ReadOnlySpan<byte> key, out SkipListNode node)
+        private SearchResult Search(ReadOnlySpan<byte> key, out SkipListNode node)
         {
             var currentNode = _allocator.HeadNode;
             var nextNodeLocation = 0l;
@@ -150,14 +154,21 @@ namespace TrimDB.Core.SkipList
                     else
                     {
                         node = default;
-                        return SkipListResult.NotFound;
+                        return SearchResult.NotFound;
                     }
                 }
                 node = _allocator.GetNode(nextNodeLocation);
                 var compare = key.SequenceCompareTo(node.Key);
                 if (compare == 0)
                 {
-                    return SkipListResult.Found;
+                    if (node.IsDeleted)
+                    {
+                        return SearchResult.Deleted;
+                    }
+                    else
+                    {
+                        return SearchResult.Found;
+                    }
                 }
                 else if (compare > 0)
                 {
@@ -171,16 +182,11 @@ namespace TrimDB.Core.SkipList
                     continue;
                 }
 
-                return SkipListResult.NotFound;
+                return SearchResult.NotFound;
             }
         }
 
-        public enum SkipListResult
-        {
-            NotFound,
-            Deleted,
-            Found
-        }
+        
 
         public class SkipListEnumerator
         {

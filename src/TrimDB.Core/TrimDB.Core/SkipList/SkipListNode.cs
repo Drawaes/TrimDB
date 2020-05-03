@@ -55,8 +55,23 @@ namespace TrimDB.Core.SkipList
         public long ValueLocation => Unsafe.Add(ref Unsafe.As<byte, long>(ref MemoryMarshal.GetReference(_nodeMemory)), 1);
         public byte TableHeight => Unsafe.Add(ref MemoryMarshal.GetReference(_nodeMemory), 4);
         public long Location => _location;
+        public bool IsDeleted
+        {
+            get
+            {
+                ref var pointer = ref Unsafe.Add(ref Unsafe.As<byte, long>(ref MemoryMarshal.GetReference(_nodeMemory)), 1);
+                return (pointer & 0b1000_0000_0000_0000) > 0;
+            }
+        }
         public bool IsAllocated => _nodeMemory.Length != 0;
         public ReadOnlySpan<byte> Key => _nodeMemory.Slice(16 + (TableHeight << 3));
+
+        public void SetDeleted()
+        {
+            ref var pointer = ref Unsafe.Add(ref Unsafe.As<byte, long>(ref MemoryMarshal.GetReference(_nodeMemory)), 1);
+            pointer |= 0b1000_0000_0000_0000_0000;
+
+        }
 
         public void SetValueLocation(long newValue)
         {
