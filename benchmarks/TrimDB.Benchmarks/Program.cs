@@ -1,13 +1,10 @@
-﻿using System;
-using System.Threading.Tasks;
-using BenchmarkDotNet.Running;
-using TrimDB.Core.SkipList;
+﻿using BenchmarkDotNet.Running;
 
 namespace TrimDB.Benchmarks
 {
-    class Program
+    public static class Program
     {
-        static void Main(string[] args)
+        public static void Main(string[] args)
         {
             //var sl = new SkipListInsert();
             //sl.GlobalSetup();

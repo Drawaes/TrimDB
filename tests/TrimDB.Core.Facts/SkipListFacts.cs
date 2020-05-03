@@ -17,22 +17,22 @@ namespace TrimDB.Core.Facts
             var loadedWords = await System.IO.File.ReadAllLinesAsync("words.txt");
             using var simpleAllocator = new NativeAllocator(4096 * 10_000, 25);
             var skipList = new SkipList.SkipList(simpleAllocator);
-            var nodes = 1_000;
+            const int Nodes = 1_000;
             var threads = new Task[Environment.ProcessorCount];
             var bytes = loadedWords.Select(lw => Encoding.UTF8.GetBytes(lw)).ToList();
             bytes.Sort(Compare);
 
             for (var t = 0; t < threads.Length; t++)
             {
-                var start = t * nodes;
-                var end = start + nodes;
+                var start = t * Nodes;
+                var end = start + Nodes;
 
                 var task = Task.Run(() => RunPut(start, end, skipList, bytes));
                 threads[t] = task;
             }
 
             await Task.WhenAll(threads);
-            CompareInOrder(bytes, skipList, nodes, threads);
+            CompareInOrder(bytes, skipList, Nodes, threads);
         }
 
         private void RunPut(int start, int end, SkipList.SkipList skipList, List<byte[]> bytes)
