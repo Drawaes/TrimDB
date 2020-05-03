@@ -29,5 +29,6 @@ Persistence and Structures:
   - nvmem?
   - seperate keys from values?
   - wh log
+  - intern ids?
 
 
