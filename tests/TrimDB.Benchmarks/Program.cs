@@ -7,7 +7,7 @@ namespace TrimDB.Benchmarks
 {
     class Program
     {
-        static async Task Main(string[] args)
+        static void Main(string[] args)
         {
             //var sl = new SkipListInsert();
             //sl.GlobalSetup();
@@ -15,7 +15,7 @@ namespace TrimDB.Benchmarks
 
             var summary = BenchmarkRunner.Run<SkipListInsert>();
 
-            
+
         }
     }
 }

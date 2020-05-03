@@ -17,15 +17,15 @@ namespace TrimDB.Benchmarks
     //[SimpleJob(RuntimeMoniker.NetCoreApp31, launchCount: 1, warmupCount: 2, targetCount: 1, invocationCount: 10, baseline: false)]
     public class SkipListInsert
     {
-        private static byte[][] _inputData;
-        private static ConcurrentQueue<byte[]> _job;
-        private static Random _rnd = new Random(7777);
+        private static byte[][] s_inputData;
+        private static ConcurrentQueue<byte[]> s_job;
+        private static readonly Random s_rnd = new Random(7777);
 
         [GlobalSetup]
         public void GlobalSetup()
         {
-            _inputData = System.IO.File.ReadAllLines("words.txt").Select(w => Encoding.UTF8.GetBytes(w)).ToArray();
-            Shuffle(_inputData);
+            s_inputData = System.IO.File.ReadAllLines("words.txt").Select(w => Encoding.UTF8.GetBytes(w)).ToArray();
+            Shuffle(s_inputData);
         }
 
         private static void Shuffle<T>(T[] array)
@@ -33,7 +33,7 @@ namespace TrimDB.Benchmarks
             var n = array.Length;
             while (n > 1)
             {
-                var k = _rnd.Next(n--);
+                var k = s_rnd.Next(n--);
                 var t = array[n];
                 array[n] = array[k];
                 array[k] = t;
@@ -41,7 +41,7 @@ namespace TrimDB.Benchmarks
         }
 
         [IterationSetup]
-        public void IterationSetup() => _job = new ConcurrentQueue<byte[]>(_inputData);
+        public void IterationSetup() => s_job = new ConcurrentQueue<byte[]>(s_inputData);
 
         [Params(20)]
         public byte TableHeight { get; set; }
@@ -62,8 +62,7 @@ namespace TrimDB.Benchmarks
 
         private static void ThreadedPut(SkipList skipList)
         {
-            var job = _job;
-            while (_job.TryDequeue(out var value))
+            while (s_job.TryDequeue(out var value))
             {
                 skipList.Put(value, value);
             }

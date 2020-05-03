@@ -20,7 +20,7 @@ namespace TrimDB.Core.Hashing
         ulong ComputeHash64(in ReadOnlySpan<byte> buffer);
     }
 
-    
+
     /// <summary>
     /// <see href="https://github.com/aappleby/smhasher/wiki/MurmurHash3">Docs</see>
     /// and <see href="https://github.com/aappleby/smhasher/blob/92cf3702fcfaadc84eb7bef59825a23e0cd84f56/src/MurmurHash3.cpp#L255">MurmurHash3.cpp</see>
@@ -33,28 +33,28 @@ namespace TrimDB.Core.Hashing
         /// <inheritdoc/>
         public unsafe uint ComputeHash32(in ReadOnlySpan<byte> buffer)
         {
-            const uint seed = 0;
+            const uint Seed = 0;
             var len = buffer.Length;
-            int nblocks = len / 16;
-            uint h1 = seed;
+            var nblocks = len / 16;
+            var h1 = Seed;
 
-            const uint c1 = 0xcc9e2d51;
-            const uint c2 = 0x1b873593;
+            const uint C1 = 0xcc9e2d51;
+            const uint C2 = 0x1b873593;
 
             // body
             fixed (byte* pbuffer = buffer)
             {
-                byte* pinput = pbuffer;
-                uint* body = (uint*)pinput;
+                var pinput = pbuffer;
+                var body = (uint*)pinput;
                 uint k1;
 
-                for (int i = -nblocks; i > 0; i++)
+                for (var i = -nblocks; i > 0; i++)
                 {
                     k1 = body[i];
 
-                    k1 *= c1;
+                    k1 *= C1;
                     k1 = (k1 << 15) | (k1 >> (32 - 15)); // ROTL32(k1, 15)
-                    k1 *= c2;
+                    k1 *= C2;
 
                     h1 ^= k1;
                     h1 = (h1 << 13) | (h1 >> (32 - 13)); // ROTL32(h1, 13)
@@ -62,7 +62,7 @@ namespace TrimDB.Core.Hashing
                 }
 
                 // tail
-                byte* tail = pinput + (nblocks * 4);
+                var tail = pinput + (nblocks * 4);
                 k1 = 0;
 
                 switch (len & 3)
@@ -75,9 +75,9 @@ namespace TrimDB.Core.Hashing
                         goto case 1;
                     case 1:
                         k1 ^= (uint)tail[0];
-                        k1 *= c1;
+                        k1 *= C1;
                         k1 = (k1 << 15) | (k1 >> (32 - 15)); // ROTL32(k1, 15)
-                        k1 *= c2;
+                        k1 *= C2;
                         h1 ^= k1;
                         break;
                 };
@@ -94,41 +94,41 @@ namespace TrimDB.Core.Hashing
         /// <inheritdoc/>
         public unsafe byte[] ComputeHash128(in ReadOnlySpan<byte> buffer)
         {
-            const ulong c1 = 0x87c37b91_114253d5;
-            const ulong c2 = 0x4cf5ad43_2745937f;
-            const ulong seed = 0;
+            const ulong C1 = 0x87c37b91_114253d5;
+            const ulong C2 = 0x4cf5ad43_2745937f;
+            const ulong Seed = 0;
             var len = buffer.Length;
-            int nblocks = len / 16;
+            var nblocks = len / 16;
 
-            ulong h1 = seed;
-            ulong h2 = seed;
+            var h1 = Seed;
+            var h2 = Seed;
 
             // body
             fixed (byte* pbuffer = buffer)
             {
-                byte* pinput = pbuffer;
-                ulong* body = (ulong*)pinput;
+                var pinput = pbuffer;
+                var body = (ulong*)pinput;
 
                 ulong k1;
                 ulong k2;
 
-                for (int i = 0; i < nblocks; i++)
+                for (var i = 0; i < nblocks; i++)
                 {
                     k1 = body[i * 2];
                     k2 = body[(i * 2) + 1];
 
-                    k1 *= c1;
+                    k1 *= C1;
                     k1 = (k1 << 31) | (k1 >> (64 - 31)); // ROTL64(k1, 31);
-                    k1 *= c2;
+                    k1 *= C2;
                     h1 ^= k1;
 
                     h1 = (h1 << 27) | (h1 >> (64 - 27)); // ROTL64(h1, 27);
                     h1 += h2;
                     h1 = (h1 * 5) + 0x52dce729;
 
-                    k2 *= c2;
+                    k2 *= C2;
                     k2 = (k2 << 33) | (k2 >> (64 - 33)); // ROTL64(k2, 33);
-                    k2 *= c1;
+                    k2 *= C1;
                     h2 ^= k2;
 
                     h2 = (h2 << 31) | (h2 >> (64 - 31)); // ROTL64(h2, 31);
@@ -141,7 +141,7 @@ namespace TrimDB.Core.Hashing
                 k1 = 0;
                 k2 = 0;
 
-                byte* tail = pinput + (nblocks * 16);
+                var tail = pinput + (nblocks * 16);
                 switch (len & 15)
                 {
                     case 15:
@@ -164,9 +164,9 @@ namespace TrimDB.Core.Hashing
                         goto case 9;
                     case 9:
                         k2 ^= tail[8];
-                        k2 *= c2;
+                        k2 *= C2;
                         k2 = (k2 << 33) | (k2 >> (64 - 33)); // ROTL64(k2, 33);
-                        k2 *= c1;
+                        k2 *= C1;
                         h2 ^= k2;
                         goto case 8;
                     case 8:
@@ -192,9 +192,9 @@ namespace TrimDB.Core.Hashing
                         goto case 1;
                     case 1:
                         k1 ^= tail[0];
-                        k1 *= c1;
+                        k1 *= C1;
                         k1 = (k1 << 31) | (k1 >> (64 - 31)); // ROTL64(k1, 31);
-                        k1 *= c2;
+                        k1 *= C2;
                         h1 ^= k1;
                         break;
                 }
@@ -226,41 +226,41 @@ namespace TrimDB.Core.Hashing
 
         public unsafe ulong ComputeHash64(in ReadOnlySpan<byte> buffer)
         {
-            const ulong c1 = 0x87c37b91_114253d5;
-            const ulong c2 = 0x4cf5ad43_2745937f;
-            const ulong seed = 0;
+            const ulong C1 = 0x87c37b91_114253d5;
+            const ulong C2 = 0x4cf5ad43_2745937f;
+            const ulong Seed = 0;
             var len = buffer.Length;
-            int nblocks = len / 16;
+            var nblocks = len / 16;
 
-            ulong h1 = seed;
-            ulong h2 = seed;
+            var h1 = Seed;
+            var h2 = Seed;
 
             // body
             fixed (byte* pbuffer = buffer)
             {
-                byte* pinput = pbuffer;
-                ulong* body = (ulong*)pinput;
+                var pinput = pbuffer;
+                var body = (ulong*)pinput;
 
                 ulong k1;
                 ulong k2;
 
-                for (int i = 0; i < nblocks; i++)
+                for (var i = 0; i < nblocks; i++)
                 {
                     k1 = body[i * 2];
                     k2 = body[(i * 2) + 1];
 
-                    k1 *= c1;
+                    k1 *= C1;
                     k1 = (k1 << 31) | (k1 >> (64 - 31)); // ROTL64(k1, 31);
-                    k1 *= c2;
+                    k1 *= C2;
                     h1 ^= k1;
 
                     h1 = (h1 << 27) | (h1 >> (64 - 27)); // ROTL64(h1, 27);
                     h1 += h2;
                     h1 = (h1 * 5) + 0x52dce729;
 
-                    k2 *= c2;
+                    k2 *= C2;
                     k2 = (k2 << 33) | (k2 >> (64 - 33)); // ROTL64(k2, 33);
-                    k2 *= c1;
+                    k2 *= C1;
                     h2 ^= k2;
 
                     h2 = (h2 << 31) | (h2 >> (64 - 31)); // ROTL64(h2, 31);
@@ -273,7 +273,7 @@ namespace TrimDB.Core.Hashing
                 k1 = 0;
                 k2 = 0;
 
-                byte* tail = pinput + (nblocks * 16);
+                var tail = pinput + (nblocks * 16);
                 switch (len & 15)
                 {
                     case 15:
@@ -296,9 +296,9 @@ namespace TrimDB.Core.Hashing
                         goto case 9;
                     case 9:
                         k2 ^= tail[8];
-                        k2 *= c2;
+                        k2 *= C2;
                         k2 = (k2 << 33) | (k2 >> (64 - 33)); // ROTL64(k2, 33);
-                        k2 *= c1;
+                        k2 *= C1;
                         h2 ^= k2;
                         goto case 8;
                     case 8:
@@ -324,9 +324,9 @@ namespace TrimDB.Core.Hashing
                         goto case 1;
                     case 1:
                         k1 ^= tail[0];
-                        k1 *= c1;
+                        k1 *= C1;
                         k1 = (k1 << 31) | (k1 >> (64 - 31)); // ROTL64(k1, 31);
-                        k1 *= c2;
+                        k1 *= C2;
                         h1 ^= k1;
                         break;
                 }

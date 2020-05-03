@@ -7,7 +7,7 @@ namespace TrimDB.Core.Storage
 {
     public class SortedStorageLayer : StorageLayer
     {
-        private int _level;
+        private readonly int _level;
 
         public SortedStorageLayer(int level)
         {

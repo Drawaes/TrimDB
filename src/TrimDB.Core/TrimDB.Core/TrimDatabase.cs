@@ -12,10 +12,10 @@ namespace TrimDB.Core
     public class TrimDatabase
     {
         private SkipList.SkipList _skipList;
-        private Func<SkipList.SkipList> _skipListFunc;
+        private readonly Func<SkipList.SkipList> _skipListFunc;
         private SkipList.SkipList _oldSkipList;
-        private List<StorageLayer> _storageLayers = new List<StorageLayer>();
-        private IHashFunction _hasher = new MurmurHash3();
+        private readonly List<StorageLayer> _storageLayers = new List<StorageLayer>();
+        private readonly IHashFunction _hasher = new MurmurHash3();
 
         public TrimDatabase(Func<SkipList.SkipList> skipListFunc, int levels)
         {

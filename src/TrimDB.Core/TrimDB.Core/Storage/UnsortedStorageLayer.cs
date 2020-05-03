@@ -7,7 +7,7 @@ namespace TrimDB.Core.Storage
 {
     public class UnsortedStorageLayer : StorageLayer
     {
-        private List<TableFile> _tableFile = new List<TableFile>();
+        private readonly List<TableFile> _tableFile = new List<TableFile>();
 
         public override async ValueTask<(SearchResult result, Memory<byte> value)> GetAsync(ReadOnlyMemory<byte> key, ulong hash)
         {

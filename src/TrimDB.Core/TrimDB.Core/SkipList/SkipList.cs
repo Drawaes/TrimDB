@@ -114,7 +114,7 @@ namespace TrimDB.Core.SkipList
         public bool Delete(ReadOnlySpan<byte> key)
         {
             var result = Search(key, out var nextNode);
-            if(result == SearchResult.Found)
+            if (result == SearchResult.Found)
             {
                 nextNode.SetDeleted();
                 return true;
@@ -139,11 +139,10 @@ namespace TrimDB.Core.SkipList
         private SearchResult Search(ReadOnlySpan<byte> key, out SkipListNode node)
         {
             var currentNode = _allocator.HeadNode;
-            var nextNodeLocation = 0l;
             var level = (byte)(_allocator.CurrentHeight - 1);
             while (true)
             {
-                nextNodeLocation = currentNode.GetTableLocation(level);
+                var nextNodeLocation = currentNode.GetTableLocation(level);
                 if (nextNodeLocation == 0)
                 {
                     if (level > 0)
@@ -186,12 +185,12 @@ namespace TrimDB.Core.SkipList
             }
         }
 
-        
+
 
         public class SkipListEnumerator
         {
             private long _location;
-            private SkipListAllocator _allocator;
+            private readonly SkipListAllocator _allocator;
 
             public SkipListEnumerator(long location, SkipListAllocator allocator)
             {

@@ -7,22 +7,22 @@ namespace TrimDB.Core.SkipList
 {
     public class SkipListHeightGenerator
     {
-        private static readonly Random _global = new Random();
+        private static readonly Random s_global = new Random();
 
         [ThreadStatic]
-        private static Random _local;
+        private static Random s_local;
 
         private static uint Next()
         {
-            Random inst = _local;
+            var inst = s_local;
             if (inst == null)
             {
                 int seed;
-                lock (_global)
+                lock (s_global)
                 {
-                    seed = _global.Next();
+                    seed = s_global.Next();
                 }
-                _local = inst = new Random(seed);
+                s_local = inst = new Random(seed);
             }
             return (uint)inst.Next();
         }

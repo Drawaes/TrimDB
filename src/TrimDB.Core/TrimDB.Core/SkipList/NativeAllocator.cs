@@ -10,10 +10,10 @@ namespace TrimDB.Core.SkipList
 {
     public class NativeAllocator : SkipListAllocator
     {
-        private IntPtr _pointer;
+        private readonly IntPtr _pointer;
         private long _currentPointer;
         private const int ALIGNMENTSIZE = 64;
-        private long _maxSize;
+        private readonly long _maxSize;
 
         public override SkipListNode HeadNode => GetNode(ALIGNMENTSIZE);
 

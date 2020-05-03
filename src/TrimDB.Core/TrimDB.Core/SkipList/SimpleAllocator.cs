@@ -11,8 +11,8 @@ namespace TrimDB.Core.SkipList
         private long _currentSize;
         private readonly List<byte[]> _buffer = new List<byte[]>();
         private readonly List<byte[]> _valueBuffer = new List<byte[]>();
-        private long _headNodeLocation;
-        private long _maxSize;
+        private readonly long _headNodeLocation;
+        private readonly long _maxSize;
 
         public SimpleAllocator(long maxSize, byte maxHeight)
         : base(maxHeight)

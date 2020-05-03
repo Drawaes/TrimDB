@@ -52,13 +52,13 @@ namespace TrimDB.Core.Facts
         private static void CompareInOrder(List<byte[]> loadedWords, SkipList.SkipList skipList, int nodes, Task[] threads)
         {
             var iter = skipList.GetIterator();
-            var node = iter.GetNext();
+            _ = iter.GetNext();
 
             var newWords = new List<byte[]>();
 
             for (var i = 0; i < nodes * threads.Length; i++)
             {
-                node = iter.GetNext();
+                var node = iter.GetNext();
                 newWords.Add(node.Key.ToArray());
             }
 
@@ -73,21 +73,18 @@ namespace TrimDB.Core.Facts
             var string3 = Encoding.UTF8.GetBytes("This is the missing test string");
             var value1 = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
             var value2 = new byte[] { 10, 11, 12, 13, 14, 15 };
-            var value3 = new byte[] { 16, 17, 18, 19, 20 };
+            _ = new byte[] { 16, 17, 18, 19, 20 };
 
             var allocator = new NativeAllocator(4096, 5);
             var skipList = new SkipList.SkipList(allocator);
 
             skipList.Put(string1, value1);
             skipList.Put(string2, value2);
-
-            var result = skipList.TryGet(string1, out var rValue1);
+            var result = skipList.TryGet(string1, out _);
             Assert.Equal(SearchResult.Found, result);
-
-            var result2 = skipList.TryGet(string2, out var rValue2);
+            var result2 = skipList.TryGet(string2, out _);
             Assert.Equal(SearchResult.Found, result2);
-
-            var result3 = skipList.TryGet(string3, out var rValue3);
+            var result3 = skipList.TryGet(string3, out _);
             Assert.Equal(SearchResult.NotFound, result3);
         }
     }
