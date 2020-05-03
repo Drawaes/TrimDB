@@ -1,0 +1,11 @@
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- sadly, but BenchmarkDotNet doesn't support well output path redirection, so we don't change anything here-->
+  <PropertyGroup>
+    <SuppressNETCoreSdkPreviewMessage>true</SuppressNETCoreSdkPreviewMessage>
+    <NoPackageAnalysis>true</NoPackageAnalysis>
+    <IsPackable>false</IsPackable>
+    <IsPublishable>false</IsPublishable>
+    <Nullable>annotations</Nullable>
+    <GenerateFullPaths Condition="'$(TERM_PROGRAM)' == 'vscode'">true</GenerateFullPaths>
+  </PropertyGroup>
+</Project>

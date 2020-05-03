@@ -1,0 +1,9 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <None Remove="words.txt" />
+    <Content Include="words.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TrimDB.Core\TrimDB.Core.csproj" />
+  </ItemGroup>
+</Project>

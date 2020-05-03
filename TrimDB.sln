@@ -4,20 +4,40 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 16.0.30014.187
 MinimumVisualStudioVersion = 15.0.26124.0
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{5222DDE2-1EDD-4EE8-B0E0-FE11C152E485}"
-EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{7B7C0343-6B49-4D54-BEE2-DB279C70577C}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TrimDB.Core", "src\TrimDB.Core\TrimDB.Core\TrimDB.Core.csproj", "{59F27DCB-678A-416C-BD6B-143EAF46F71F}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TrimDB.Core.Facts", "tests\TrimDB.Core.Facts\TrimDB.Core.Facts\TrimDB.Core.Facts.csproj", "{C92A7E0B-15EC-4243-AA02-A6E7C1CF0EDE}"
-EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{F56511EB-8158-47EB-8C37-DB369F451BD0}"
 	ProjectSection(SolutionItems) = preProject
-		.editorconfig = .editorconfig
-		Research.md = Research.md
+		src\Directory.Build.props = src\Directory.Build.props
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TrimDB.Benchmarks", "tests\TrimDB.Benchmarks\TrimDB.Benchmarks.csproj", "{91D0DD28-8B0D-4105-B8EB-4202A0C8EEDA}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{7B7C0343-6B49-4D54-BEE2-DB279C70577C}"
+	ProjectSection(SolutionItems) = preProject
+		tests\Directory.Build.props = tests\Directory.Build.props
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "_root", "_root", "{F56511EB-8158-47EB-8C37-DB369F451BD0}"
+	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
+		Directory.Build.props = Directory.Build.props
+		Directory.Build.targets = Directory.Build.targets
+		Packages.props = Packages.props
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{373814FE-72E1-4CA5-B9D3-37E8598100DC}"
+	ProjectSection(SolutionItems) = preProject
+		docs\Research.md = docs\Research.md
+		docs\scope.md = docs\scope.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "benchmarks", "benchmarks", "{1B9A3EE5-CC6B-4915-AE92-6BF316E53DC8}"
+	ProjectSection(SolutionItems) = preProject
+		benchmarks\Directory.Build.props = benchmarks\Directory.Build.props
+		benchmarks\Directory.Build.targets = benchmarks\Directory.Build.targets
+	EndProjectSection
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TrimDB.Benchmarks", "benchmarks\TrimDB.Benchmarks\TrimDB.Benchmarks.csproj", "{4C44A676-62D6-4805-9B05-B6C0836B5DD7}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TrimDB.Core", "src\TrimDB.Core\TrimDB.Core.csproj", "{189F860F-7A65-4569-B264-B958FEFDF1AF}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TrimDB.Core.Facts", "tests\TrimDB.Core.Facts\TrimDB.Core.Facts.csproj", "{9A0D6D6D-C8F8-4702-87ED-F67F05442B37}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -25,26 +45,26 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{59F27DCB-678A-416C-BD6B-143EAF46F71F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{59F27DCB-678A-416C-BD6B-143EAF46F71F}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{59F27DCB-678A-416C-BD6B-143EAF46F71F}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{59F27DCB-678A-416C-BD6B-143EAF46F71F}.Release|Any CPU.Build.0 = Release|Any CPU
-		{C92A7E0B-15EC-4243-AA02-A6E7C1CF0EDE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{C92A7E0B-15EC-4243-AA02-A6E7C1CF0EDE}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{C92A7E0B-15EC-4243-AA02-A6E7C1CF0EDE}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{C92A7E0B-15EC-4243-AA02-A6E7C1CF0EDE}.Release|Any CPU.Build.0 = Release|Any CPU
-		{91D0DD28-8B0D-4105-B8EB-4202A0C8EEDA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{91D0DD28-8B0D-4105-B8EB-4202A0C8EEDA}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{91D0DD28-8B0D-4105-B8EB-4202A0C8EEDA}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{91D0DD28-8B0D-4105-B8EB-4202A0C8EEDA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4C44A676-62D6-4805-9B05-B6C0836B5DD7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C44A676-62D6-4805-9B05-B6C0836B5DD7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C44A676-62D6-4805-9B05-B6C0836B5DD7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C44A676-62D6-4805-9B05-B6C0836B5DD7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{189F860F-7A65-4569-B264-B958FEFDF1AF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{189F860F-7A65-4569-B264-B958FEFDF1AF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{189F860F-7A65-4569-B264-B958FEFDF1AF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{189F860F-7A65-4569-B264-B958FEFDF1AF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9A0D6D6D-C8F8-4702-87ED-F67F05442B37}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9A0D6D6D-C8F8-4702-87ED-F67F05442B37}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9A0D6D6D-C8F8-4702-87ED-F67F05442B37}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9A0D6D6D-C8F8-4702-87ED-F67F05442B37}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
-		{59F27DCB-678A-416C-BD6B-143EAF46F71F} = {5222DDE2-1EDD-4EE8-B0E0-FE11C152E485}
-		{C92A7E0B-15EC-4243-AA02-A6E7C1CF0EDE} = {7B7C0343-6B49-4D54-BEE2-DB279C70577C}
-		{91D0DD28-8B0D-4105-B8EB-4202A0C8EEDA} = {7B7C0343-6B49-4D54-BEE2-DB279C70577C}
+		{4C44A676-62D6-4805-9B05-B6C0836B5DD7} = {1B9A3EE5-CC6B-4915-AE92-6BF316E53DC8}
+		{189F860F-7A65-4569-B264-B958FEFDF1AF} = {5222DDE2-1EDD-4EE8-B0E0-FE11C152E485}
+		{9A0D6D6D-C8F8-4702-87ED-F67F05442B37} = {7B7C0343-6B49-4D54-BEE2-DB279C70577C}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {3927E62A-6330-4331-9B9A-160C0CE4D994}

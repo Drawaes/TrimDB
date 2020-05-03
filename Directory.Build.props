@@ -1,0 +1,38 @@
+<Project ToolsVersion="latest" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <SolutionDir Condition="'$(SolutionDir)' == ''">$(MSBuildThisFileDirectory.TrimEnd('\').TrimEnd('/'))\</SolutionDir>
+    <NoLogo>true</NoLogo>
+    <Description>TrimDb</Description>
+    <SuppressNETCoreSdkPreviewMessage>true</SuppressNETCoreSdkPreviewMessage>
+    <NoPackageAnalysis>true</NoPackageAnalysis>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <LangVersion>preview</LangVersion>
+    <Nullable>enable</Nullable>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <OutputPath>$(SolutionDir)artifacts\</OutputPath>
+    <PackageOutputPath>$(SolutionDir)artifacts\nupkg</PackageOutputPath>
+    <Features>strict;pdb-path-determinism</Features>
+    <!-- Rider doesn't support deterministic build with SourceMap -->
+    <!-- embedded not recommended yet for libs and nupkg, track this in https://github.com/dotnet/sdk/issues/2679 -->
+    <!-- also embedded doesn't work with dotnet pack without nuspec or IncludeBuildOutput = false -->
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+    <!-- NU5105: The package version uses SemVer 2.0.0 or components of SemVer 1.0.0 that are not supported on legacy clients -->
+    <!-- NU5048: The 'PackageIconUrl'/'iconUrl' element is deprecated -->
+    <NoWarn>$(NoWarn);NU5105;NU5048;</NoWarn>
+    <GenerateFullPaths Condition="'$(TERM_PROGRAM)' == 'vscode'">true</GenerateFullPaths>
+  </PropertyGroup>
+  <!-- Coverlet bug with SourceLink workaround  https://github.com/tonerdo/coverlet/issues/363 and https://github.com/dotnet/sourcelink/issues/91 -->
+  <!-- Rider doesn't support deterministic build with SourceMap -->
+  <PropertyGroup Condition="'$(IDEA_INITIAL_DIRECTORY)' == ''">
+    <Deterministic>true</Deterministic>
+    <DeterministicSourcePaths>true</DeterministicSourcePaths>
+    <ContinuousIntegrationBuild>false</ContinuousIntegrationBuild>
+    <PathMap>'$(SolutionDir)'=/_/</PathMap>
+  </PropertyGroup>
+  <!-- From https://github.com/dotnet/roslyn/issues/37379 -->
+  <ItemGroup  Label="Coverlet with SourceLink workaround" Condition="$(DeterministicSourcePaths) == 'true'">
+    <SourceRoot Include="$(MSBuildThisFileDirectory)/"/>
+  </ItemGroup>
+</Project>

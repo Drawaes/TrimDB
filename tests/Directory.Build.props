@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="latest" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>$(SolutionDir)artifacts\obj\$(MSBuildProjectName)</BaseIntermediateOutputPath>
+    <OutputPath>$(SolutionDir)artifacts\tests</OutputPath>
+    <!-- CA1034 - Do not nest type -->
+    <!-- CA1822	- Member can be marked as static -->
+    <!-- CS8604:  Possible null reference argument -->
+    <NoWarn>1701;1702;CA1034;CA1822;CS8604;</NoWarn>
+    <IsPackable>false</IsPackable>
+    <IsPublishable>false</IsPublishable>
+    <Nullable>annotations</Nullable>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <!-- Copy all references to output folder (can be important for coverage tools) -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.analyzers" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+
+</Project>
