@@ -12,5 +12,8 @@ Papers
 4. [Cassandra SSTable Format](http://distributeddatastore.blogspot.com/2013/08/cassandra-sstable-storage-format.html)
 5. [Patrick ONeil LSM Paper](https://www.cs.umb.edu/~poneil/lsmtree.pdf)
 6. [Google BigTable Paper](https://static.googleusercontent.com/media/research.google.com/en//archive/bigtable-osdi06.pdf)
+7. [Delta Encoding](https://dl.acm.org/doi/pdf/10.1145/567112.567116)
+8. [Delta Encoding](http://www.ijircce.com/upload/2015/september/130_Efficient.pdf)
+
 
 
