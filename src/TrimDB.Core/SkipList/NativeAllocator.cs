@@ -37,6 +37,7 @@ namespace TrimDB.Core.SkipList
 
         public unsafe override SkipListNode GetNode(long nodeLocation)
         {
+            if (nodeLocation == 0) return default;
             var ptr = (byte*)_pointer.ToPointer() + nodeLocation;
             var length = Unsafe.Read<int>(ptr);
             var node = new SkipListNode(new Span<byte>(ptr, length), nodeLocation);
@@ -47,7 +48,7 @@ namespace TrimDB.Core.SkipList
         {
             var ptr = (byte*)_pointer.ToPointer() + valueLocation;
             var length = Unsafe.Read<int>(ptr);
-            return new Span<byte>(ptr, length);
+            return new Span<byte>(ptr + sizeof(int), length);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

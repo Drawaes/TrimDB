@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using TrimDB.Core.SkipList;
+using TrimDB.Core.Storage;
 using Xunit;
 
 namespace TrimDB.Core.Facts
@@ -17,53 +18,66 @@ namespace TrimDB.Core.Facts
             var loadedWords = await System.IO.File.ReadAllLinesAsync("words.txt");
             using var simpleAllocator = new NativeAllocator(4096 * 10_000, 25);
             var skipList = new SkipList.SkipList(simpleAllocator);
-            const int Nodes = 1_000;
-            var threads = new Task[Environment.ProcessorCount];
-            var bytes = loadedWords.Select(lw => Encoding.UTF8.GetBytes(lw)).ToList();
-            bytes.Sort(Compare);
 
-            for (var t = 0; t < threads.Length; t++)
+            foreach (var word in loadedWords)
             {
-                var start = t * Nodes;
-                var end = start + Nodes;
-
-                var task = Task.Run(() => RunPut(start, end, skipList, bytes));
-                threads[t] = task;
+                var utf8 = Encoding.UTF8.GetBytes(word);
+                var value = Encoding.UTF8.GetBytes($"VALUE={word}");
+                skipList.Put(utf8, value);
             }
 
-            await Task.WhenAll(threads);
-            CompareInOrder(bytes, skipList, Nodes, threads);
+            var filePath = "C:\\code\\trimdb\\";
+
+            var writer = new TableFileWriter(filePath, 1, 1);
+            await writer.SaveSkipList(skipList);
+
+            var reader = new TableFile(filePath, 1, 1);
+            await reader.Load();
         }
+        //    bytes.Sort(Compare);
 
-        private void RunPut(int start, int end, SkipList.SkipList skipList, List<byte[]> bytes)
-        {
-            for (var i = start; i < end; i++)
-            {
-                var data = bytes[i];
-                skipList.Put(data, data);
-            }
-        }
+        //    for (var t = 0; t < threads.Length; t++)
+        //    {
+        //        var start = t * Nodes;
+        //        var end = start + Nodes;
 
-        private int Compare(byte[] valueA, byte[] valueB)
-        {
-            return valueA.AsSpan().SequenceCompareTo(valueB);
-        }
+        //        var task = Task.Run(() => RunPut(start, end, skipList, bytes));
+        //        threads[t] = task;
+        //    }
 
-        private static void CompareInOrder(List<byte[]> loadedWords, SkipList.SkipList skipList, int nodes, Task[] threads)
-        {
-            var iter = skipList.GetIterator();
-            _ = iter.GetNext();
+        //    await Task.WhenAll(threads);
+        //    CompareInOrder(bytes, skipList, Nodes, threads);
+        //}
 
-            var newWords = new List<byte[]>();
+        //private void RunPut(int start, int end, SkipList.SkipList skipList, List<byte[]> bytes)
+        //{
+        //    for (var i = start; i < end; i++)
+        //    {
+        //        var data = bytes[i];
+        //        skipList.Put(data, data);
+        //    }
+        //}
 
-            for (var i = 0; i < nodes * threads.Length; i++)
-            {
-                var node = iter.GetNext();
-                newWords.Add(node.Key.ToArray());
-            }
+        //private int Compare(byte[] valueA, byte[] valueB)
+        //{
+        //    return valueA.AsSpan().SequenceCompareTo(valueB);
+        //}
 
-            Assert.Equal(loadedWords.Take(newWords.Count), newWords);
-        }
+        //private static void CompareInOrder(List<byte[]> loadedWords, SkipList.SkipList skipList, int nodes, Task[] threads)
+        //{
+        //    var iter = skipList.GetIterator();
+        //    _ = iter.GetNext();
+
+        //    var newWords = new List<byte[]>();
+
+        //    for (var i = 0; i < nodes * threads.Length; i++)
+        //    {
+        //        var node = iter.GetNext();
+        //        newWords.Add(node.Key.ToArray());
+        //    }
+
+        //    Assert.Equal(loadedWords.Take(newWords.Count), newWords);
+        //}
 
         [Fact]
         public void SkipListPutWorking()
@@ -80,8 +94,10 @@ namespace TrimDB.Core.Facts
 
             skipList.Put(string1, value1);
             skipList.Put(string2, value2);
-            var result = skipList.TryGet(string1, out _);
+            var result = skipList.TryGet(string1, out var valueResult);
             Assert.Equal(SearchResult.Found, result);
+            Assert.Equal(value1, valueResult.ToArray());
+
             var result2 = skipList.TryGet(string2, out _);
             Assert.Equal(SearchResult.Found, result2);
             var result3 = skipList.TryGet(string3, out _);

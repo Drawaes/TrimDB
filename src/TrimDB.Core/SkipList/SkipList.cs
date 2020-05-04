@@ -1,18 +1,16 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text;
 
 namespace TrimDB.Core.SkipList
 {
-    public class SkipList
+    public class SkipList : IEnumerable<SkipListItem>
     {
         private readonly SkipListAllocator _allocator;
 
-        public SkipList(SkipListAllocator allocator)
-        {
-            _allocator = allocator;
-        }
+        public SkipList(SkipListAllocator allocator) => _allocator = allocator;
 
         public bool Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
         {
@@ -83,8 +81,6 @@ namespace TrimDB.Core.SkipList
             }
             return true;
         }
-
-        public SkipListEnumerator GetIterator() => new SkipListEnumerator(-1, _allocator);
 
         private (long left, long right) FindBounds(ReadOnlySpan<byte> key, long startPoint, byte height)
         {
@@ -185,38 +181,8 @@ namespace TrimDB.Core.SkipList
             }
         }
 
+        public IEnumerator<SkipListItem> GetEnumerator() => new SkipListEnumerator(_allocator);
 
-
-        public class SkipListEnumerator
-        {
-            private long _location;
-            private readonly SkipListAllocator _allocator;
-
-            public SkipListEnumerator(long location, SkipListAllocator allocator)
-            {
-                _location = location;
-                _allocator = allocator;
-            }
-
-            public SkipListNode GetNext()
-            {
-                SkipListNode nextNode;
-                if (_location == -1)
-                {
-                    nextNode = _allocator.HeadNode;
-                }
-                else if (_location == 0)
-                {
-                    //Unallocated end of list node
-                    return new SkipListNode();
-                }
-                else
-                {
-                    nextNode = _allocator.GetNode(_location);
-                }
-                _location = nextNode.GetTableLocation(0);
-                return nextNode;
-            }
-        }
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

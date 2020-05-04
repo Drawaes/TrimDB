@@ -17,20 +17,30 @@ namespace TrimDB.Benchmarks
     //[SimpleJob(RuntimeMoniker.NetCoreApp31, launchCount: 1, warmupCount: 2, targetCount: 1, invocationCount: 10, baseline: false)]
     public class SkipListInsert
     {
-        private static byte[][] s_inputData;
+        private static List<byte[]> s_inputData = new List<byte[]>();
         private static ConcurrentQueue<byte[]> s_job;
         private static readonly Random s_rnd = new Random(7777);
 
         [GlobalSetup]
         public void GlobalSetup()
         {
-            s_inputData = System.IO.File.ReadAllLines("words.txt").Select(w => Encoding.UTF8.GetBytes(w)).ToArray();
+            var randomBytes = new byte[8];
+            foreach (var line in System.IO.File.ReadAllLines("words.txt").Select(w => Encoding.UTF8.GetBytes(w)).ToArray())
+            {
+                s_inputData.Add(line);
+
+                s_rnd.NextBytes(randomBytes);
+                for (var i = 0; i < 10; i++)
+                {
+                    s_inputData.Add(randomBytes.Concat(line).ToArray());
+                }
+            }
             Shuffle(s_inputData);
         }
 
-        private static void Shuffle<T>(T[] array)
+        private static void Shuffle<T>(List<T> array)
         {
-            var n = array.Length;
+            var n = array.Count;
             while (n > 1)
             {
                 var k = s_rnd.Next(n--);
@@ -49,7 +59,7 @@ namespace TrimDB.Benchmarks
         [Benchmark(Baseline = true)]
         public async Task NativeAllocator()
         {
-            using var simpleAllocator = new NativeAllocator(4096 * 1024 * 2, TableHeight);
+            using var simpleAllocator = new NativeAllocator(4096 * 1024 * 10, TableHeight);
             var skipList = new SkipList(simpleAllocator);
             var tasks = new Task[Environment.ProcessorCount];
 
@@ -60,6 +70,30 @@ namespace TrimDB.Benchmarks
             await Task.WhenAll(tasks);
         }
 
+        [Benchmark]
+        public async Task ConcurrentDictionary()
+        {
+            var dictionary = new ConcurrentDictionary<byte[], byte[]>();
+            var tasks = new Task[Environment.ProcessorCount];
+
+            for (var i = 0; i < tasks.Length; i++)
+            {
+                tasks[i] = Task.Run(() => ConcurrentDictionaryPut(dictionary));
+            }
+            await Task.WhenAll(tasks);
+
+        }
+
+        private static void ConcurrentDictionaryPut(ConcurrentDictionary<byte[], byte[]> dictionary)
+        {
+            while (s_job.TryDequeue(out var value))
+            {
+                var copy = new byte[value.Length];
+                Array.Copy(value, copy, value.Length);
+                dictionary.TryAdd(copy, copy);
+            }
+        }
+
         private static void ThreadedPut(SkipList skipList)
         {
             while (s_job.TryDequeue(out var value))
@@ -67,5 +101,6 @@ namespace TrimDB.Benchmarks
                 skipList.Put(value, value);
             }
         }
+
     }
 }
