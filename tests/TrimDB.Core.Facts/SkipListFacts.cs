@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,13 +27,13 @@ namespace TrimDB.Core.Facts
                 skipList.Put(utf8, value);
             }
 
-            var filePath = "C:\\code\\trimdb\\";
+            var filePath = "C:\\code\\trimdb\\test.trim";
 
-            var writer = new TableFileWriter(filePath, 1, 1);
+            var writer = new TableFileWriter(filePath);
             await writer.SaveSkipList(skipList);
 
-            var reader = new TableFile(filePath, 1, 1);
-            await reader.Load();
+            var reader = new TableFile(writer.FileName);
+            await reader.LoadAsync();
         }
         //    bytes.Sort(Compare);
 
@@ -103,5 +104,7 @@ namespace TrimDB.Core.Facts
             var result3 = skipList.TryGet(string3, out _);
             Assert.Equal(SearchResult.NotFound, result3);
         }
+
+        
     }
 }

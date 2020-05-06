@@ -2,6 +2,7 @@
 using System.Buffers;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using TrimDB.Core.Hashing;
 using TrimDB.Core.SkipList;
@@ -13,18 +14,29 @@ namespace TrimDB.Core
     {
         private SkipList.SkipList _skipList;
         private readonly Func<SkipList.SkipList> _skipListFunc;
-        private SkipList.SkipList _oldSkipList;
+        private List<SkipList.SkipList> _oldSkipLists = new List<SkipList.SkipList>();
         private readonly List<StorageLayer> _storageLayers = new List<StorageLayer>();
         private readonly IHashFunction _hasher = new MurmurHash3();
+        private readonly SemaphoreSlim _skipListLock = new SemaphoreSlim(1);
+        private string _databaseFolder;
+        private IOScheduler _ioScheduler;
 
-        public TrimDatabase(Func<SkipList.SkipList> skipListFunc, int levels)
+        public TrimDatabase(Func<SkipList.SkipList> skipListFunc, int levels, string databaseFolder)
         {
+            if (!System.IO.Directory.Exists(databaseFolder))
+            {
+                System.IO.Directory.CreateDirectory(databaseFolder);
+            }
+
+            _databaseFolder = databaseFolder;
             _skipListFunc = skipListFunc;
 
-            _storageLayers.Add(new UnsortedStorageLayer());
-            for (var i = 1; i < levels; i++)
+            var unsorted = new UnsortedStorageLayer(1, _databaseFolder);
+            _ioScheduler = new IOScheduler(1, unsorted);
+            _storageLayers.Add(unsorted);
+            for (var i = 2; i <= levels; i++)
             {
-                _storageLayers.Add(new SortedStorageLayer(i));
+                _storageLayers.Add(new SortedStorageLayer(i, _databaseFolder));
             }
             _skipList = _skipListFunc();
         }
@@ -44,10 +56,10 @@ namespace TrimDB.Core
                 return new ValueTask<Memory<byte>>(memory);
             }
 
-            if (_oldSkipList != null)
+            var oldLists = _oldSkipLists;
+            foreach (var oldsl in oldLists)
             {
-                sl = _oldSkipList;
-                result = sl.TryGet(key, out value);
+                result = oldsl.TryGet(key, out value);
                 if (result == SearchResult.Deleted)
                 {
                     return new ValueTask<Memory<byte>>(new Memory<byte>());
@@ -84,19 +96,40 @@ namespace TrimDB.Core
             throw new NotImplementedException();
         }
 
-        public void PutAsync(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+        public async Task PutAsync(ReadOnlyMemory<byte> key, ReadOnlyMemory<byte> value)
         {
+            while (true)
+            {
+                var sl = Volatile.Read(ref _skipList);
 
+                if (!sl.Put(key.Span, value.Span))
+                {
+                    await SwitchSkipList(sl);
+                    continue;
+                }
+                return;
+            }
         }
 
-        public void PutAsync(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, long oldValueLocation)
+        // TODO : Solve the overwriting the old skip list if its not on disk yet
+        private async Task SwitchSkipList(SkipList.SkipList sl)
         {
-
-        }
-
-        public void RangeAsync()
-        {
-            throw new NotImplementedException();
+            await _skipListLock.WaitAsync();
+            try
+            {
+                if (Volatile.Read(ref _skipList) == sl)
+                {
+                    var list = new List<SkipList.SkipList>(_oldSkipLists) { sl };
+                    Interlocked.Exchange(ref _oldSkipLists, list);
+                    Interlocked.Exchange(ref _skipList, _skipListFunc());
+                    await _ioScheduler.ScheduleSkipListSave(sl);
+                }
+            }
+            finally
+            {
+                _skipListLock.Release();
+            }
         }
     }
 }
+

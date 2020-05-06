@@ -3,7 +3,9 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO.Pipelines;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.X86;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.VisualBasic.CompilerServices;
@@ -14,22 +16,18 @@ namespace TrimDB.Core.Storage
 {
     public class TableFileWriter
     {
-        private int _level;
-        private int _fileId;
         private string _fileName;
-        private const int PageSize = 4096;
-        private const uint MagicNumber = 0xDEADBEAF;
-        private const int Version = 1;
+        private uint _crc;
 
         private List<long> _blockOffsets = new List<long>();
         private Filter _currentFilter = new Filter();
 
-        public TableFileWriter(string pathToFiles, int level, int fileId)
+        public TableFileWriter(string fileName)
         {
-            _level = level;
-            _fileId = fileId;
-            _fileName = System.IO.Path.Combine(pathToFiles, $"Level{level}_{fileId}.trim");
+            _fileName = fileName;
         }
+
+        public string FileName => _fileName;
 
         public async Task SaveSkipList(SkipList.SkipList skipList)
         {
@@ -54,13 +52,15 @@ namespace TrimDB.Core.Storage
 
             WriteTOC(pipeWriter, firstKeyInFile, lastKeyInFile, itemCount);
 
+            await pipeWriter.FlushAsync();
+
             await pipeWriter.CompleteAsync();
 
         }
 
         private void WriteTOC(PipeWriter pipeWriter, ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, int count)
         {
-            var currentLocation = _blockOffsets.Count * PageSize;
+            var currentLocation = _blockOffsets.Count * FileConsts.PageSize;
 
             var filterOffset = currentLocation;
             var filterSize = _currentFilter.WriteToPipe(pipeWriter);
@@ -71,39 +71,37 @@ namespace TrimDB.Core.Storage
             var statsSize = WriteStats(pipeWriter, firstKey, lastKey, count);
             currentLocation += statsSize;
 
-
             var blockOffsetsOffset = currentLocation;
             var blockOffsetsSize = WriteBlockOffsets(pipeWriter);
 
-            var tocSize = 3 * (sizeof(long) + sizeof(int) + sizeof(short));
+            var tocSize = 3 * Unsafe.SizeOf<TocEntry>();
             tocSize += sizeof(uint) + sizeof(int) + sizeof(int);
 
             var span = pipeWriter.GetSpan(tocSize);
+            span = span[..tocSize];
+            var totalSpan = span;
 
-            span = WriteTOCEntry(span, TOCType.Filter, filterOffset, filterSize);
-            span = WriteTOCEntry(span, TOCType.BlockOffsets, blockOffsetsOffset, blockOffsetsSize);
-            span = WriteTOCEntry(span, TOCType.Statistics, statsOffset, statsSize);
+            span = WriteTOCEntry(span, TocEntryType.Filter, filterOffset, filterSize);
+            span = WriteTOCEntry(span, TocEntryType.BlockOffsets, blockOffsetsOffset, blockOffsetsSize);
+            span = WriteTOCEntry(span, TocEntryType.Statistics, statsOffset, statsSize);
 
-            BinaryPrimitives.WriteInt32LittleEndian(span, Version);
+            BinaryPrimitives.WriteInt32LittleEndian(span, FileConsts.Version);
             span = span[sizeof(int)..];
 
             BinaryPrimitives.WriteInt32LittleEndian(span, tocSize);
             span = span[sizeof(int)..];
 
-            BinaryPrimitives.WriteUInt32LittleEndian(span, MagicNumber);
+            BinaryPrimitives.WriteUInt32LittleEndian(span, FileConsts.MagicNumber);
             span = span[sizeof(uint)..];
-
+            _crc = CalculateCRC(_crc, totalSpan);
             pipeWriter.Advance(tocSize);
         }
 
-        private Span<byte> WriteTOCEntry(Span<byte> span, TOCType tocType, long offset, int length)
+        private Span<byte> WriteTOCEntry(Span<byte> span, TocEntryType tocType, long offset, int length)
         {
-            BinaryPrimitives.WriteInt16LittleEndian(span, (short) tocType);
-            span = span[sizeof(short)..];
-            BinaryPrimitives.WriteInt64LittleEndian(span, offset);
-            span = span[sizeof(long)..];
-            BinaryPrimitives.WriteInt32LittleEndian(span, length);
-            return span[sizeof(int)..];
+            var tocEntry = new TocEntry() { EntryType = tocType, Offset = offset, Length = length };
+            Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(span), tocEntry);
+            return span[Unsafe.SizeOf<TocEntry>()..];
         }
 
         private int WriteBlockOffsets(PipeWriter pipeWriter)
@@ -111,6 +109,8 @@ namespace TrimDB.Core.Storage
             var sizeToWrite = _blockOffsets.Count * sizeof(long) + sizeof(int);
 
             var span = pipeWriter.GetSpan(sizeToWrite);
+            var totalSpan = span[..sizeToWrite];
+
             BinaryPrimitives.WriteInt32LittleEndian(span, _blockOffsets.Count);
             span = span[sizeof(int)..];
 
@@ -120,6 +120,7 @@ namespace TrimDB.Core.Storage
                 span = span[sizeof(long)..];
             }
 
+            _crc = CalculateCRC(_crc, totalSpan);
             pipeWriter.Advance(sizeToWrite);
             return sizeToWrite;
         }
@@ -129,6 +130,8 @@ namespace TrimDB.Core.Storage
             var totalWritten = firstKey.Length + sizeof(int) * 3 + lastKey.Length;
 
             var memory = pipeWriter.GetSpan(totalWritten);
+            var totalSpan = memory[..totalWritten];
+
             BinaryPrimitives.WriteInt32LittleEndian(memory, firstKey.Length);
             memory = memory[sizeof(int)..];
             firstKey.CopyTo(memory);
@@ -142,6 +145,7 @@ namespace TrimDB.Core.Storage
             BinaryPrimitives.WriteInt32LittleEndian(memory, count);
             memory = memory[sizeof(int)..];
 
+            _crc = CalculateCRC(_crc, totalSpan);
             pipeWriter.Advance(totalWritten);
 
             return totalWritten;
@@ -149,9 +153,10 @@ namespace TrimDB.Core.Storage
 
         private bool WriteBlock(PipeWriter pipeWriter, IEnumerator<SkipListItem> iterator, ref int counter)
         {
-            var span = pipeWriter.GetSpan(PageSize);
-            span = span[..PageSize];
-            var currentOffset = _blockOffsets.Count * PageSize;
+            var span = pipeWriter.GetSpan(FileConsts.PageSize);
+            span = span[..FileConsts.PageSize];
+            var totalSpan = span;
+            var currentOffset = _blockOffsets.Count * FileConsts.PageSize;
             _blockOffsets.Add(currentOffset);
 
             do
@@ -164,7 +169,8 @@ namespace TrimDB.Core.Storage
                 if (sizeNeeded > span.Length)
                 {
                     span.Fill(0);
-                    pipeWriter.Advance(PageSize);
+                    _crc = CalculateCRC(_crc, totalSpan);
+                    pipeWriter.Advance(FileConsts.PageSize);
                     return false;
                 }
 
@@ -182,22 +188,37 @@ namespace TrimDB.Core.Storage
             } while (iterator.MoveNext());
 
             span.Fill(0);
-            pipeWriter.Advance(PageSize);
+            _crc = CalculateCRC(_crc, totalSpan);
+            pipeWriter.Advance(FileConsts.PageSize);
 
             return true;
         }
 
         // TODO: Complete CRC Check
-        private void CalculateCRC(ReadOnlySpan<byte> span)
+        private uint CalculateCRC(uint crc, ReadOnlySpan<byte> span)
         {
             ref var mem = ref MemoryMarshal.GetReference(span);
-        }
+            var remaining = span.Length;
 
-        private enum TOCType : short
-        {
-            BlockOffsets,
-            Statistics,
-            Filter
+            while (remaining >= 4)
+            {
+                crc = Sse42.Crc32(crc, Unsafe.As<byte, uint>(ref mem));
+                mem = ref Unsafe.Add(ref mem, sizeof(uint));
+                remaining -= sizeof(uint);
+            }
+
+            if (remaining >= 2)
+            {
+                crc = Sse42.Crc32(crc, Unsafe.As<byte, ushort>(ref mem));
+                mem = ref Unsafe.Add(ref mem, sizeof(ushort));
+                remaining -= sizeof(ushort);
+            }
+
+            if (remaining == 1)
+            {
+                crc = Sse42.Crc32(crc, mem);
+            }
+            return crc;
         }
     }
 }

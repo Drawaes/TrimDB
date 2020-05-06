@@ -3,12 +3,14 @@ using System.CodeDom.Compiler;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
+using TrimDB.Core.Hashing;
 using TrimDB.Core.SkipList;
 
 namespace TrimDB.Benchmarks
@@ -71,9 +73,68 @@ namespace TrimDB.Benchmarks
         }
 
         [Benchmark]
+        public async Task ConcurrentDictionaryNoCopy()
+        {
+            var dictionary = new ConcurrentDictionary<byte[], byte[]>(new Comparer());
+            var tasks = new Task[Environment.ProcessorCount];
+
+            for (var i = 0; i < tasks.Length; i++)
+            {
+                tasks[i] = Task.Run(() => ConcurrentDictionaryPutNoCopy(dictionary));
+            }
+            await Task.WhenAll(tasks);
+        }
+
+        private class Comparer : IEqualityComparer<byte[]>
+        {
+            private MurmurHash3 _hash = new MurmurHash3();
+
+            public bool Equals(byte[] x, byte[] y)
+            {
+                return x.AsSpan().SequenceCompareTo(y) == 0;
+            }
+
+            public int GetHashCode(byte[] obj)
+            {
+                return (int)CalculateCRC2(0, obj);
+            }
+
+            private uint CalculateCRC2(uint crc, ReadOnlySpan<byte> span)
+            {
+                ref var mem = ref MemoryMarshal.GetReference(span);
+                var remaining = span.Length;
+
+                if ((remaining & 0x01) == 1)
+                {
+                    crc = System.Runtime.Intrinsics.X86.Sse42.Crc32(crc, mem);
+                    mem = ref Unsafe.Add(ref mem, 1);
+                    remaining--;
+                }
+
+                if ((remaining & 0x02) == 2)
+                {
+                    crc = System.Runtime.Intrinsics.X86.Sse42.Crc32(crc, Unsafe.As<byte, ushort>(ref mem));
+                    mem = ref Unsafe.Add(ref mem, 2);
+                    remaining -= 2;
+                }
+
+                ref var uints = ref Unsafe.As<byte, uint>(ref mem);
+                while (remaining > 0)
+                {
+                    crc = System.Runtime.Intrinsics.X86.Sse42.Crc32(crc, uints);
+                    uints = ref Unsafe.Add(ref uints, 1);
+                    remaining -= 4;
+                }
+
+                return crc;
+            }
+        }
+
+
+        [Benchmark]
         public async Task ConcurrentDictionary()
         {
-            var dictionary = new ConcurrentDictionary<byte[], byte[]>();
+            var dictionary = new ConcurrentDictionary<byte[], byte[]>(new Comparer());
             var tasks = new Task[Environment.ProcessorCount];
 
             for (var i = 0; i < tasks.Length; i++)
@@ -91,6 +152,14 @@ namespace TrimDB.Benchmarks
                 var copy = new byte[value.Length];
                 Array.Copy(value, copy, value.Length);
                 dictionary.TryAdd(copy, copy);
+            }
+        }
+
+        private static void ConcurrentDictionaryPutNoCopy(ConcurrentDictionary<byte[], byte[]> dictionary)
+        {
+            while (s_job.TryDequeue(out var value))
+            {
+                dictionary.TryAdd(value, value);
             }
         }
 
