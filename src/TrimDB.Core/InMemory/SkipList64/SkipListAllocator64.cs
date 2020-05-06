@@ -1,0 +1,46 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace TrimDB.Core.InMemory.SkipList64
+{
+    public abstract class SkipListAllocator64 : IDisposable
+    {
+        protected readonly SkipListHeightGenerator64 HeightGenerator;
+
+        protected SkipListAllocator64(byte maxHeight) => HeightGenerator = new SkipListHeightGenerator64(maxHeight);
+
+        public byte MaxHeight => HeightGenerator.MaxHeight;
+        public byte CurrentHeight => HeightGenerator.CurrentHeight;
+
+        public abstract SkipListNode64 HeadNode { get; }
+        public abstract SkipListNode64 GetNode(long nodeLocation);
+        public abstract ReadOnlySpan<byte> GetValue(long valueLocation);
+        protected abstract long AllocateNode(int length, out Span<byte> memoy);
+        public abstract long AllocateValue(ReadOnlySpan<byte> value);
+        protected abstract void Dispose(bool isDisposing);
+
+        public SkipListNode64 AllocateNode(ReadOnlySpan<byte> key)
+        {
+            var height = HeightGenerator.GetHeight();
+            var memoryNeeded = SkipListNode64.CalculateSizeNeeded(height, key.Length);
+            var nodeLocation = AllocateNode(memoryNeeded, out var memory);
+
+            if (nodeLocation == 0) return new SkipListNode64();
+
+            var returnValue = new SkipListNode64(memory, nodeLocation, height, key);
+            return returnValue;
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        ~SkipListAllocator64()
+        {
+            Dispose(false);
+        }
+    }
+}

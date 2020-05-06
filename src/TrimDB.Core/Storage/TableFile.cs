@@ -15,14 +15,14 @@ namespace TrimDB.Core.Storage
 {
     public class TableFile
     {
-        private string _fileName;
+        private readonly string _fileName;
         private ReadOnlyMemory<byte> _toc;
         private ReadOnlyMemory<byte> _firstKey;
         private ReadOnlyMemory<byte> _lastKey;
         private TocEntry[] _tocEntries;
         private int _blockCount;
-        private int _index;
-        private int _level;
+        private readonly int _index;
+        private readonly int _level;
 
         public TableFile(string filename)
         {
