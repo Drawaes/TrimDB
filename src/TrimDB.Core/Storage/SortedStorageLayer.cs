@@ -31,9 +31,15 @@ namespace TrimDB.Core.Storage
             }
         }
 
-        public override async ValueTask<(SearchResult result, Memory<byte> value)> GetAsync(ReadOnlyMemory<byte> key, ulong hash)
+        public override int MaxFilesAtLayer => (int)(Math.Pow(10, _level) * 2);
+
+        public override int MaxSizeAtLayer => (int)(Math.Pow(10, _level - 1) * 1024 * 1024 * 8);
+
+        public override int NumberOfTables => throw new NotImplementedException();
+
+        public override ValueTask<SearchResultValue> GetAsync(ReadOnlyMemory<byte> key, ulong hash)
         {
-            return (SearchResult.NotFound, new Memory<byte>());
+            return SearchResultValue.CreateValueTask(SearchResult.NotFound);
         }
     }
 }

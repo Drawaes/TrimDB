@@ -32,7 +32,7 @@ namespace TrimDB.Core
             _inMemoryFunc = inMemoryFunc;
 
             var unsorted = new UnsortedStorageLayer(1, _databaseFolder);
-            _ioScheduler = new IOScheduler(1, unsorted);
+            _ioScheduler = new IOScheduler(1, unsorted, this);
             _storageLayers.Add(unsorted);
             for (var i = 2; i <= levels; i++)
             {
@@ -41,7 +41,9 @@ namespace TrimDB.Core
             _skipList = _inMemoryFunc();
         }
 
-        public ValueTask<Memory<byte>> GetAsync(ReadOnlySpan<byte> key)
+        internal List<StorageLayer> StorageLayers => _storageLayers;
+
+        public ValueTask<ReadOnlyMemory<byte>> GetAsync(ReadOnlySpan<byte> key)
         {
             var sl = _skipList;
             var result = sl.TryGet(key, out var value);
@@ -53,7 +55,7 @@ namespace TrimDB.Core
             else if (result == SearchResult.Found)
             {
                 var memory = value.ToArray();
-                return new ValueTask<Memory<byte>>(memory);
+                return new ValueTask<ReadOnlyMemory<byte>>(memory);
             }
 
             var oldLists = _oldInMemoryTables;
@@ -62,30 +64,41 @@ namespace TrimDB.Core
                 result = oldsl.TryGet(key, out value);
                 if (result == SearchResult.Deleted)
                 {
-                    return new ValueTask<Memory<byte>>(new Memory<byte>());
+                    return new ValueTask<ReadOnlyMemory<byte>>(new ReadOnlyMemory<byte>());
                 }
                 else if (result == SearchResult.Found)
                 {
                     var memory = value.ToArray();
-                    return new ValueTask<Memory<byte>>(memory);
+                    return new ValueTask<ReadOnlyMemory<byte>>(memory);
                 }
             }
 
             var copiedMemory = MemoryPool<byte>.Shared.Rent(key.Length);
             key.CopyTo(copiedMemory.Memory.Span);
-            return GetAsyncInternal(copiedMemory.Memory);
+            return GetAsyncInternal(copiedMemory.Memory.Slice(0,key.Length));
         }
 
-        public async ValueTask<Memory<byte>> GetAsyncInternal(Memory<byte> key)
+        internal void RemoveMemoryTable(MemoryTable sl)
+        {
+            while (true)
+            {
+                var memTable = _oldInMemoryTables;
+                var list = new List<MemoryTable>(_oldInMemoryTables);
+                list.Remove(sl);
+                if (Interlocked.CompareExchange(ref _oldInMemoryTables, list, memTable) == memTable) return;
+            }
+        }
+
+        public async ValueTask<ReadOnlyMemory<byte>> GetAsyncInternal(ReadOnlyMemory<byte> key)
         {
             var keyHash = _hasher.ComputeHash64(key.Span);
 
             foreach (var storage in _storageLayers)
             {
-                var (result, value) = await storage.GetAsync(key, keyHash).ConfigureAwait(false);
-                if (result == SearchResult.Deleted || result == SearchResult.Found)
+                var result = await storage.GetAsync(key, keyHash).ConfigureAwait(false);
+                if (result.Result == SearchResult.Deleted || result.Result == SearchResult.Found)
                 {
-                    return value;
+                    return result.Value;
                 }
             }
             return default;

@@ -14,6 +14,12 @@ namespace TrimDB.Core.Storage
         private TableFile[] _tableFiles;
         private int[] _tableFileIndices;
 
+        public override int MaxFilesAtLayer => 6;
+
+        public override int MaxSizeAtLayer => 1024 * 1024 * 1024;
+
+        public override int NumberOfTables => _tableFiles.Length;
+
         public UnsortedStorageLayer(int level, string databaseFolder)
         {
             _databaseFolder = databaseFolder;
@@ -57,19 +63,19 @@ namespace TrimDB.Core.Storage
             return System.IO.Path.Combine(_databaseFolder, $"Level{_level}_{nextFileIndex}.trim");
         }
 
-        public override async ValueTask<(SearchResult result, Memory<byte> value)> GetAsync(ReadOnlyMemory<byte> key, ulong hash)
+        public override async ValueTask<SearchResultValue> GetAsync(ReadOnlyMemory<byte> key, ulong hash)
         {
             var tfs = _tableFiles;
             foreach (var tf in tfs)
             {
-                var (result, value) = await tf.GetAsync(key, hash);
-                if (result == SearchResult.Deleted || result == SearchResult.Found)
+                var result = await tf.GetAsync(key, hash);
+                if (result.Result == SearchResult.Deleted || result.Result == SearchResult.Found)
                 {
-                    return (result, value);
+                    return result;
                 }
             }
 
-            return (SearchResult.NotFound, default);
+            return new SearchResultValue() { Result = SearchResult.NotFound };
         }
     }
 }

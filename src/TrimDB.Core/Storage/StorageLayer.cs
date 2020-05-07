@@ -7,8 +7,10 @@ namespace TrimDB.Core.Storage
 {
     public abstract class StorageLayer
     {
-        public int MaxFilesAtLayer { get; set; }
-        public int MaxSizeAtLayer { get; set; }
-        public abstract ValueTask<(SearchResult result, Memory<byte> value)> GetAsync(ReadOnlyMemory<byte> key, ulong hash);
+        public abstract int MaxFilesAtLayer { get;}
+        public abstract int MaxSizeAtLayer { get; }
+        public abstract int NumberOfTables { get;}
+
+        public abstract ValueTask<SearchResultValue> GetAsync(ReadOnlyMemory<byte> key, ulong hash);
     }
 }

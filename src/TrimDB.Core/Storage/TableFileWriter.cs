@@ -21,7 +21,7 @@ namespace TrimDB.Core.Storage
         private uint _crc;
 
         private readonly List<long> _blockOffsets = new List<long>();
-        private readonly Filter _currentFilter = new Filter();
+        private readonly Filter _currentFilter = new XorFilter();
 
         public TableFileWriter(string fileName)
         {
