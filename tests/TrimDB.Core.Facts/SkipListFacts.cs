@@ -5,7 +5,8 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using TrimDB.Core.SkipList;
+using TrimDB.Core.InMemory.SkipList32;
+using TrimDB.Core.InMemory.SkipList64;
 using TrimDB.Core.Storage;
 using Xunit;
 
@@ -17,8 +18,8 @@ namespace TrimDB.Core.Facts
         public async Task TestCanPutInOrder()
         {
             var loadedWords = await System.IO.File.ReadAllLinesAsync("words.txt");
-            using var simpleAllocator = new NativeAllocator(4096 * 10_000, 25);
-            var skipList = new SkipList.SkipList(simpleAllocator);
+            using var simpleAllocator = new NativeAllocator32(4096 * 10_000, 25);
+            var skipList = new SkipList32(simpleAllocator);
 
             foreach (var word in loadedWords)
             {
@@ -30,7 +31,7 @@ namespace TrimDB.Core.Facts
             var filePath = "C:\\code\\trimdb\\test.trim";
 
             var writer = new TableFileWriter(filePath);
-            await writer.SaveSkipList(skipList);
+            await writer.SaveMemoryTable(skipList);
 
             var reader = new TableFile(writer.FileName);
             await reader.LoadAsync();
@@ -90,8 +91,8 @@ namespace TrimDB.Core.Facts
             var value2 = new byte[] { 10, 11, 12, 13, 14, 15 };
             _ = new byte[] { 16, 17, 18, 19, 20 };
 
-            var allocator = new NativeAllocator(4096, 5);
-            var skipList = new SkipList.SkipList(allocator);
+            using var simpleAllocator = new NativeAllocator32(4096 * 10_000, 25);
+            var skipList = new SkipList32(simpleAllocator);
 
             skipList.Put(string1, value1);
             skipList.Put(string2, value2);
@@ -104,7 +105,5 @@ namespace TrimDB.Core.Facts
             var result3 = skipList.TryGet(string3, out _);
             Assert.Equal(SearchResult.NotFound, result3);
         }
-
-        
     }
 }

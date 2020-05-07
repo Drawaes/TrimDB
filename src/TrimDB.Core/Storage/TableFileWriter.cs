@@ -9,18 +9,19 @@ using System.Runtime.Intrinsics.X86;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.VisualBasic.CompilerServices;
-using TrimDB.Core.SkipList;
+using TrimDB.Core.InMemory;
+using TrimDB.Core.InMemory.SkipList64;
 using TrimDB.Core.Storage.Filters;
 
 namespace TrimDB.Core.Storage
 {
     public class TableFileWriter
     {
-        private string _fileName;
+        private readonly string _fileName;
         private uint _crc;
 
-        private List<long> _blockOffsets = new List<long>();
-        private Filter _currentFilter = new Filter();
+        private readonly List<long> _blockOffsets = new List<long>();
+        private readonly Filter _currentFilter = new Filter();
 
         public TableFileWriter(string fileName)
         {
@@ -29,7 +30,7 @@ namespace TrimDB.Core.Storage
 
         public string FileName => _fileName;
 
-        public async Task SaveSkipList(SkipList.SkipList skipList)
+        public async Task SaveMemoryTable(MemoryTable skipList)
         {
             using var fs = System.IO.File.OpenWrite(_fileName);
             var pipeWriter = PipeWriter.Create(fs);
@@ -151,7 +152,7 @@ namespace TrimDB.Core.Storage
             return totalWritten;
         }
 
-        private bool WriteBlock(PipeWriter pipeWriter, IEnumerator<SkipListItem> iterator, ref int counter)
+        private bool WriteBlock(PipeWriter pipeWriter, IEnumerator<IMemoryItem> iterator, ref int counter)
         {
             var span = pipeWriter.GetSpan(FileConsts.PageSize);
             span = span[..FileConsts.PageSize];

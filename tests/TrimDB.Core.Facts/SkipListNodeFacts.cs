@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
-using TrimDB.Core.SkipList;
+using TrimDB.Core.InMemory.SkipList64;
 using Xunit;
 
 namespace TrimDB.Core.Facts
@@ -12,7 +12,7 @@ namespace TrimDB.Core.Facts
         [InlineData(3, 10, 50)]
         public void SizeCalculatedCorrectly(byte height, int keyLength, int result)
         {
-            Assert.Equal(result, SkipListNode.CalculateSizeNeeded(height, keyLength));
+            Assert.Equal(result, SkipListNode64.CalculateSizeNeeded(height, keyLength));
         }
 
         [Fact]
@@ -20,9 +20,9 @@ namespace TrimDB.Core.Facts
         {
             var height = (byte)2;
             var key = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-            var memory = new byte[SkipListNode.CalculateSizeNeeded(height, key.Length)];
+            var memory = new byte[SkipListNode64.CalculateSizeNeeded(height, key.Length)];
 
-            var node = new SkipListNode(memory, 0);
+            var node = new SkipListNode64(memory, 0);
 
             var valueLocation = 1000;
 
@@ -40,9 +40,9 @@ namespace TrimDB.Core.Facts
         {
             var height = (byte)2;
             var key = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-            var memory = new byte[SkipListNode.CalculateSizeNeeded(height, key.Length)];
+            var memory = new byte[SkipListNode64.CalculateSizeNeeded(height, key.Length)];
 
-            var node = new SkipListNode(memory, 77, height, key);
+            var node = new SkipListNode64(memory, 77, height, key);
 
             Assert.Equal(height, node.TableHeight);
             Assert.True(node.Key.SequenceCompareTo(key) == 0);
@@ -55,9 +55,9 @@ namespace TrimDB.Core.Facts
         {
             var height = (byte)2;
             var key = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-            var memory = new byte[SkipListNode.CalculateSizeNeeded(height, key.Length)];
+            var memory = new byte[SkipListNode64.CalculateSizeNeeded(height, key.Length)];
 
-            var node = new SkipListNode(memory, 77, height, key);
+            var node = new SkipListNode64(memory, 77, height, key);
 
             var tableLocation = 123456;
             var nextLocation = 234567;
