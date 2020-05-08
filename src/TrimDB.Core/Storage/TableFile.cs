@@ -17,15 +17,9 @@ using TrimDB.Core.Storage.Filters;
 
 namespace TrimDB.Core.Storage
 {
-    public class TableFile : IDisposable, IEnumerable<IMemoryItem>
+    public class TableFile : IDisposable, IAsyncEnumerable<IMemoryItem>
     {
         private readonly string _fileName;
-
-        internal void ReleaseIterator()
-        {
-            throw new NotImplementedException();
-        }
-
         private ReadOnlyMemory<byte> _toc;
         private ReadOnlyMemory<byte> _firstKey;
         private ReadOnlyMemory<byte> _lastKey;
@@ -306,14 +300,14 @@ namespace TrimDB.Core.Storage
             _fs.Dispose();
         }
 
-        IEnumerator<IMemoryItem> IEnumerable<IMemoryItem>.GetEnumerator()
+        public IAsyncEnumerator<IMemoryItem> GetAsyncEnumerator(CancellationToken cancellationToken = default)
         {
-            throw new NotImplementedException();
+            return new TableFileEnumerator(this);
         }
 
-        IEnumerator IEnumerable.GetEnumerator()
+        internal void ReleaseIterator()
         {
-            throw new NotImplementedException();
+            //TODO: Release lock on table file when iterator is completed
         }
     }
 }

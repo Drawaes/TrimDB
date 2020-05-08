@@ -3,39 +3,40 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using TrimDB.Core.InMemory;
 
 namespace TrimDB.Core.Storage
 {
     public class TableFileMerger : IAsyncEnumerator<IMemoryItem>
     {
-        private IEnumerator<IMemoryItem>[] _memoryItems;
+        private IAsyncEnumerator<IMemoryItem>[] _memoryItems;
+        private IAsyncEnumerator<IMemoryItem>[] _initialList;
         private bool _hasInitialMove;
-        private IEnumerator<IMemoryItem> _currentIterator;
+        private IAsyncEnumerator<IMemoryItem> _currentIterator;
 
-        public TableFileMerger(IEnumerator<IMemoryItem>[] memoryItems)
+        public TableFileMerger(IAsyncEnumerator<IMemoryItem>[] memoryItems)
         {
+            _initialList = _memoryItems;
             _memoryItems = memoryItems;
             _currentIterator = _memoryItems[0];
         }
 
         public IMemoryItem Current => _currentIterator.Current;
 
-        object? IEnumerator.Current => Current;
-
-        public bool MoveNext()
+        public async ValueTask<bool> MoveNextAsync()
         {
             if (!_hasInitialMove)
             {
                 _hasInitialMove = true;
                 foreach (var i in _memoryItems)
                 {
-                    i.MoveNext();
+                    await i.MoveNextAsync();
                 }
             }
             else
             {
-                if (!_currentIterator.MoveNext())
+                if (!await _currentIterator.MoveNextAsync())
                     _memoryItems = _memoryItems.Where(mi => mi != _currentIterator).ToArray();
             }
 
@@ -49,7 +50,7 @@ namespace TrimDB.Core.Storage
                 var compare = _currentIterator.Current.Key.SequenceCompareTo(currentIterator.Current.Key);
                 if (compare == 0)
                 {
-                    if (!currentIterator.MoveNext())
+                    if (!await currentIterator.MoveNextAsync())
                     {
                         if (_memoryItems.Contains(currentIterator))
                         {
@@ -67,19 +68,11 @@ namespace TrimDB.Core.Storage
             return true;
         }
 
-        public void Reset()
+        public async ValueTask DisposeAsync()
         {
-            foreach (var i in _memoryItems)
+            foreach (var i in _initialList)
             {
-                i.Dispose();
-            }
-        }
-
-        public void Dispose()
-        {
-            foreach (var i in _memoryItems)
-            {
-                i.Dispose();
+                await i.DisposeAsync();
             }
         }
     }

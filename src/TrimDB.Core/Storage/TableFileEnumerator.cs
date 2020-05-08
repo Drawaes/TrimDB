@@ -13,7 +13,6 @@ namespace TrimDB.Core.Storage
         private TableFile _tableFile;
         private int _blockNumber = -1;
         private BlockReader _blockReader;
-        
 
         public TableFileEnumerator(TableFile tableFile)
         {
@@ -22,37 +21,32 @@ namespace TrimDB.Core.Storage
 
         public IMemoryItem Current => throw new NotImplementedException();
 
-        object? IEnumerator.Current => throw new NotImplementedException();
-
-        public void Dispose()
-        {
-            _tableFile.ReleaseIterator();
-        }
-
         public ValueTask DisposeAsync()
         {
-            throw new NotImplementedException();
+            _tableFile.ReleaseIterator();
+            return default;
         }
 
-        public bool MoveNext()
+        public async ValueTask<bool> MoveNextAsync()
         {
-            if(_blockReader == null)
+            if (_blockReader == null)
             {
                 _blockNumber++;
-                _blockReader = _tableFile.GetKVBlock(_blockNumber);
+                _blockReader = await _tableFile.GetKVBlock(_blockNumber);
             }
 
+            if (_blockReader.TryGetNextKey(out _))
+            {
+                return true;
+            }
 
-        }
-
-        public ValueTask<bool> MoveNextAsync()
-        {
-            throw new NotImplementedException();
-        }
-
-        public void Reset()
-        {
-            _blockNumber = -1;
+            _blockNumber++;
+            _blockReader = await _tableFile.GetKVBlock(_blockNumber);
+            if (_blockReader == null)
+            {
+                return false;
+            }
+            return true;
         }
     }
 }

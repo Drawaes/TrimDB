@@ -49,7 +49,7 @@ namespace TrimDB.Core.Storage
 
             _valueLength = span.Length - _keyLength;
             _valueLocation = _location + sizeof(long) + sizeof(int) + _keyLength;
-            _keyLocation = _location;
+            _keyLocation = (int) _location;
             _location += sizeOfKV;
 
             key = span.Slice(0, _keyLength);

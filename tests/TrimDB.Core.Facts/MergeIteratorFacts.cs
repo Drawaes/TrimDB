@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading.Tasks;
 using TrimDB.Core.InMemory;
 using TrimDB.Core.Storage;
 using Xunit;
@@ -11,15 +12,15 @@ namespace TrimDB.Core.Facts
     public class MergeIteratorFacts
     {
         [Fact]
-        public void CheckMergeWorks()
+        public async Task CheckMergeWorks()
         {
-            var firstList = new List<IMemoryItem>() { new TestMemoryItem(1), new TestMemoryItem(5), new TestMemoryItem(7), new TestMemoryItem(10) };
-            var secondList = new List<IMemoryItem>() { new TestMemoryItem(1), new TestMemoryItem(6), new TestMemoryItem(7), new TestMemoryItem(10), new TestMemoryItem(12) };
+            var firstList = GetAsync(new byte[] { 1, 5, 7, 10 });
+            var secondList = GetAsync(new byte[] { 1, 6, 7, 10, 12 });
 
-            var merger = new TableFileMerger(new IEnumerator<IMemoryItem>[] { firstList.GetEnumerator(), secondList.GetEnumerator() });
+            var merger = new TableFileMerger(new[] { firstList.GetAsyncEnumerator(), secondList.GetAsyncEnumerator() });
             var result = new List<int>();
 
-            while (merger.MoveNext())
+            while (await merger.MoveNextAsync())
             {
                 result.Add(merger.Current.Key[0]);
             }
@@ -40,6 +41,17 @@ namespace TrimDB.Core.Facts
             public ReadOnlySpan<byte> Value => default;
 
             public bool IsDeleted => false;
+        }
+
+        private static IAsyncEnumerable<IMemoryItem> GetAsync(byte[] items)
+        {
+            var firstList = System.Threading.Channels.Channel.CreateUnbounded<IMemoryItem>();
+            foreach (var i in items)
+            {
+                firstList.Writer.TryWrite(new TestMemoryItem(i));
+            }
+            firstList.Writer.Complete();
+            return firstList.Reader.ReadAllAsync();
         }
     }
 }
