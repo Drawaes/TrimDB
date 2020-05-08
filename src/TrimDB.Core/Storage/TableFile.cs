@@ -25,8 +25,9 @@ namespace TrimDB.Core.Storage
         private long[] _blockEntries;
         private readonly int _index;
         private readonly int _level;
-        private FileStream _fs;
+        private Stream _fs;
         private Filter _filter = new XorFilter();
+        private CountdownEvent _countDown = new CountdownEvent(1);
 
         public TableFile(string filename)
         {
@@ -38,6 +39,10 @@ namespace TrimDB.Core.Storage
 
         public int Index => _index;
         public int Level => _level;
+        public ReadOnlyMemory<byte> FirstKey => _firstKey;
+        public ReadOnlyMemory<byte> LastKey => _lastKey;
+
+        public string FileName => _fileName;
 
         internal ValueTask<SearchResultValue> GetAsync(ReadOnlyMemory<byte> key, ulong hash)
         {
@@ -276,6 +281,16 @@ namespace TrimDB.Core.Storage
                 _fs.Seek(-tocSize, SeekOrigin.End);
                 _toc = await GetBlockFromFile(tocSize);
             }
+        }
+
+        public async Task LoadToMemory()
+        {
+            var memoryStream = new MemoryStream();
+            _fs.Seek(0, SeekOrigin.Begin);
+            await _fs.CopyToAsync(memoryStream);
+            var file = _fs;
+            _fs = memoryStream;
+            await file.DisposeAsync();
         }
 
         public void Dispose()

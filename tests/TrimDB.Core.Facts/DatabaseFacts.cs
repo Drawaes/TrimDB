@@ -39,7 +39,9 @@ namespace TrimDB.Core.Facts
             Assert.Equal(expectedValue.ToArray(), result.ToArray());
 
             key = Encoding.UTF8.GetBytes(loadedWords[loadedWords.Length / 2]);
-            result = await db.GetAsync(key); 
+            result = await db.GetAsync(key);
+
+            await Task.Delay(TimeSpan.FromSeconds(10));
         }
     }
 }
