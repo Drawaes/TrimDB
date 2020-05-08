@@ -44,7 +44,7 @@ namespace TrimDB.Core.Storage
         }
 
         public abstract int MaxFilesAtLayer { get; }
-        public abstract int MaxSizeAtLayer { get; }
+        public abstract int MaxFileSize { get; }
         public abstract int NumberOfTables { get; }
         public int Level => _level;
 

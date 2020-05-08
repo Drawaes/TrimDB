@@ -10,7 +10,7 @@ namespace TrimDB.Core.Storage
     {
         public override int MaxFilesAtLayer => 6;
 
-        public override int MaxSizeAtLayer => 1024 * 1024 * 1024;
+        public override int MaxFileSize => 1024 * 1024 * 1024;
 
         public override int NumberOfTables => _tableFiles.Length;
 

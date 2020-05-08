@@ -6,7 +6,7 @@ using System.Text;
 namespace TrimDB.Core.Storage
 {
     [StructLayout(LayoutKind.Explicit)]
-    internal struct TocEntry
+    public struct TocEntry
     {
         [FieldOffset(0)]
         public long Offset;
@@ -16,7 +16,7 @@ namespace TrimDB.Core.Storage
         public TocEntryType EntryType;
     }
 
-    internal enum TocEntryType : short
+    public enum TocEntryType : short
     {
         BlockOffsets = 1,
         Statistics = 2,

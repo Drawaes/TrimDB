@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading;
@@ -78,32 +79,56 @@ namespace TrimDB.Core.Storage
 
             var nextLayer = _database.StorageLayers[unsortedLayer.Level];
 
+            var tables = unsortedLayer.GetTables();
+            var oldestTable = tables[0];
+
             // We maybe able to push a file straight down look for exclusive ranges
             if (nextLayer.NumberOfTables < nextLayer.MaxFilesAtLayer)
             {
-                var tables = unsortedLayer.GetTables();
-
-                foreach (var table in tables)
+                if (DoesTableFitWithNoOverlap(oldestTable, nextLayer))
                 {
-                    if (DoesTableFitWithNoOverlap(table, nextLayer))
-                    {
-                        // Candidate for merging
-                        var newFilename = nextLayer.GetNextFileName();
-                        var oldFileName = table.FileName;
-                        await table.LoadToMemory();
-                        System.IO.File.Move(oldFileName, newFilename);
-                        var newTable = new TableFile(newFilename);
-                        await newTable.LoadAsync();
-                        nextLayer.AddTableFile(newTable);
-                        unsortedLayer.RemoveTable(table);
-                        table.Dispose();
-                        return;
-                    }
+                    // Candidate for merging
+                    var newFilename = nextLayer.GetNextFileName();
+                    var oldFileName = oldestTable.FileName;
+                    await oldestTable.LoadToMemory();
+                    System.IO.File.Move(oldFileName, newFilename);
+                    var newTable = new TableFile(newFilename);
+                    await newTable.LoadAsync();
+                    nextLayer.AddTableFile(newTable);
+                    unsortedLayer.RemoveTable(oldestTable);
+                    oldestTable.Dispose();
+                    return;
                 }
             }
 
-            //We need to actually merge
-            throw new NotImplementedException();
+            // Get all of the overlapping tables
+            var overlapped = GetOverlappingTables(oldestTable, nextLayer);
+            overlapped.Add(oldestTable);
+
+            var merger = new TableFileMerger(overlapped.Select(ol => ol.GetAsyncEnumerator()).ToArray());
+            // Begin writing out to disk
+
+
+            //throw new NotImplementedException();
+        }
+
+        private List<TableFile> GetOverlappingTables(TableFile table, StorageLayer nextLayer)
+        {
+            var tablesBelow = nextLayer.GetTables();
+            var firstKey = table.FirstKey.Span;
+            var lastKey = table.FirstKey.Span;
+
+            var overlapped = new List<TableFile>();
+
+            foreach(var lowerTable in tablesBelow)
+            {
+                var compare = firstKey.SequenceCompareTo(lowerTable.LastKey.Span);
+                if (compare > 0) continue;
+                compare = lastKey.SequenceCompareTo(lowerTable.FirstKey.Span);
+                if (compare < 0) continue;
+                overlapped.Add(lowerTable);
+            }
+            return overlapped;
         }
 
         private bool DoesTableFitWithNoOverlap(TableFile table, StorageLayer nextLayer)

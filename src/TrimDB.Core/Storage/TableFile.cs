@@ -224,6 +224,7 @@ namespace TrimDB.Core.Storage
 
         public async Task<BlockReader> GetKVBlock(int blockId)
         {
+            if (blockId >= _blockEntries.Length) return null;
             var blockLocation = _blockEntries[blockId];
             var block = await GetBlockFromFile(blockLocation, FileConsts.PageSize);
             return new BlockReader(block);

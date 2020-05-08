@@ -13,13 +13,14 @@ namespace TrimDB.Core.Storage
         private TableFile _tableFile;
         private int _blockNumber = -1;
         private BlockReader _blockReader;
+        private ReusableMemoryItem _memItem = new ReusableMemoryItem();
 
         public TableFileEnumerator(TableFile tableFile)
         {
             _tableFile = tableFile;
         }
 
-        public IMemoryItem Current => throw new NotImplementedException();
+        public IMemoryItem Current => _memItem;
 
         public ValueTask DisposeAsync()
         {
@@ -37,6 +38,7 @@ namespace TrimDB.Core.Storage
 
             if (_blockReader.TryGetNextKey(out _))
             {
+                _memItem.CurrentBlock = _blockReader;
                 return true;
             }
 
@@ -46,7 +48,19 @@ namespace TrimDB.Core.Storage
             {
                 return false;
             }
+            _memItem.CurrentBlock = _blockReader;
             return true;
+        }
+
+        internal class ReusableMemoryItem : IMemoryItem
+        {
+            public BlockReader CurrentBlock { get; set; }
+
+            public ReadOnlySpan<byte> Key => CurrentBlock.GetCurrentKey();
+
+            public ReadOnlySpan<byte> Value => throw new NotImplementedException();
+
+            public bool IsDeleted => throw new NotImplementedException();
         }
     }
 }

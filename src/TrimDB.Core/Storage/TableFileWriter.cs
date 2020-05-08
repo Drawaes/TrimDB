@@ -69,87 +69,15 @@ namespace TrimDB.Core.Storage
             currentLocation += filterSize;
 
             var statsOffset = currentLocation;
-            var statsSize = WriteStats(pipeWriter, firstKey, lastKey, count);
+            var statsSize = TableFileFooter.WriteStats(pipeWriter, firstKey, lastKey, count);
             currentLocation += statsSize;
 
             var blockOffsetsOffset = currentLocation;
-            var blockOffsetsSize = WriteBlockOffsets(pipeWriter);
+            var blockOffsetsSize = TableFileFooter.WriteBlockOffsets(pipeWriter, _blockOffsets);
 
-            var tocSize = 3 * Unsafe.SizeOf<TocEntry>();
-            tocSize += sizeof(uint) + sizeof(int) + sizeof(int);
-
-            var span = pipeWriter.GetSpan(tocSize);
-            span = span[..tocSize];
-            var totalSpan = span;
-
-            span = WriteTOCEntry(span, TocEntryType.Filter, filterOffset, filterSize);
-            span = WriteTOCEntry(span, TocEntryType.BlockOffsets, blockOffsetsOffset, blockOffsetsSize);
-            span = WriteTOCEntry(span, TocEntryType.Statistics, statsOffset, statsSize);
-
-            BinaryPrimitives.WriteInt32LittleEndian(span, FileConsts.Version);
-            span = span[sizeof(int)..];
-
-            BinaryPrimitives.WriteInt32LittleEndian(span, tocSize);
-            span = span[sizeof(int)..];
-
-            BinaryPrimitives.WriteUInt32LittleEndian(span, FileConsts.MagicNumber);
-            span = span[sizeof(uint)..];
-            _crc = CalculateCRC(_crc, totalSpan);
-            pipeWriter.Advance(tocSize);
-        }
-
-        private Span<byte> WriteTOCEntry(Span<byte> span, TocEntryType tocType, long offset, int length)
-        {
-            var tocEntry = new TocEntry() { EntryType = tocType, Offset = offset, Length = length };
-            Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(span), tocEntry);
-            return span[Unsafe.SizeOf<TocEntry>()..];
-        }
-
-        private int WriteBlockOffsets(PipeWriter pipeWriter)
-        {
-            var sizeToWrite = _blockOffsets.Count * sizeof(long) + sizeof(int);
-
-            var span = pipeWriter.GetSpan(sizeToWrite);
-            var totalSpan = span[..sizeToWrite];
-
-            BinaryPrimitives.WriteInt32LittleEndian(span, _blockOffsets.Count);
-            span = span[sizeof(int)..];
-
-            foreach (var offset in _blockOffsets)
-            {
-                BinaryPrimitives.WriteInt64LittleEndian(span, offset);
-                span = span[sizeof(long)..];
-            }
-
-            _crc = CalculateCRC(_crc, totalSpan);
-            pipeWriter.Advance(sizeToWrite);
-            return sizeToWrite;
-        }
-
-        private int WriteStats(PipeWriter pipeWriter, ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, int count)
-        {
-            var totalWritten = firstKey.Length + sizeof(int) * 3 + lastKey.Length;
-
-            var memory = pipeWriter.GetSpan(totalWritten);
-            var totalSpan = memory[..totalWritten];
-
-            BinaryPrimitives.WriteInt32LittleEndian(memory, firstKey.Length);
-            memory = memory[sizeof(int)..];
-            firstKey.CopyTo(memory);
-            memory = memory[firstKey.Length..];
-
-            BinaryPrimitives.WriteInt32LittleEndian(memory, lastKey.Length);
-            memory = memory[sizeof(int)..];
-            lastKey.CopyTo(memory);
-            memory = memory[lastKey.Length..];
-
-            BinaryPrimitives.WriteInt32LittleEndian(memory, count);
-            memory = memory[sizeof(int)..];
-
-            _crc = CalculateCRC(_crc, totalSpan);
-            pipeWriter.Advance(totalWritten);
-
-            return totalWritten;
+            TableFileFooter.WriteTOC(pipeWriter, new TocEntry() { EntryType = TocEntryType.Filter, Length = filterSize, Offset = filterOffset },
+                new TocEntry() { EntryType = TocEntryType.Statistics, Length = statsSize, Offset = statsOffset },
+                new TocEntry() { EntryType = TocEntryType.BlockOffsets, Length = blockOffsetsSize, Offset = blockOffsetsOffset });
         }
 
         private bool WriteBlock(PipeWriter pipeWriter, IEnumerator<IMemoryItem> iterator, ref int counter)
