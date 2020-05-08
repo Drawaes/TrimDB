@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Buffers.Binary;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -11,13 +12,20 @@ using System.Runtime.InteropServices.ComTypes;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using TrimDB.Core.InMemory;
 using TrimDB.Core.Storage.Filters;
 
 namespace TrimDB.Core.Storage
 {
-    public class TableFile : IDisposable
+    public class TableFile : IDisposable, IEnumerable<IMemoryItem>
     {
         private readonly string _fileName;
+
+        internal void ReleaseIterator()
+        {
+            throw new NotImplementedException();
+        }
+
         private ReadOnlyMemory<byte> _toc;
         private ReadOnlyMemory<byte> _firstKey;
         private ReadOnlyMemory<byte> _lastKey;
@@ -41,7 +49,7 @@ namespace TrimDB.Core.Storage
         public int Level => _level;
         public ReadOnlyMemory<byte> FirstKey => _firstKey;
         public ReadOnlyMemory<byte> LastKey => _lastKey;
-
+        public int BlockCount => _blockEntries.Length;
         public string FileName => _fileName;
 
         internal ValueTask<SearchResultValue> GetAsync(ReadOnlyMemory<byte> key, ulong hash)
@@ -220,7 +228,7 @@ namespace TrimDB.Core.Storage
             }
         }
 
-        private async Task<BlockReader> GetKVBlock(int blockId)
+        public async Task<BlockReader> GetKVBlock(int blockId)
         {
             var blockLocation = _blockEntries[blockId];
             var block = await GetBlockFromFile(blockLocation, FileConsts.PageSize);
@@ -296,6 +304,16 @@ namespace TrimDB.Core.Storage
         public void Dispose()
         {
             _fs.Dispose();
+        }
+
+        IEnumerator<IMemoryItem> IEnumerable<IMemoryItem>.GetEnumerator()
+        {
+            throw new NotImplementedException();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            throw new NotImplementedException();
         }
     }
 }

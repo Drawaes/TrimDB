@@ -12,10 +12,18 @@ namespace TrimDB.Core.Storage
         private long _location;
         private long _valueLocation;
         private int _valueLength;
+        private int _keyLength;
+        private int _keyLocation;
 
         public BlockReader(ReadOnlyMemory<byte> blockData)
         {
             _blockData = blockData;
+        }
+
+        public ReadOnlySpan<byte> GetCurrentKey()
+        {
+            var span = _blockData.Span.Slice(_keyLocation, _keyLength);
+            return span;
         }
 
         public bool TryGetNextKey(out ReadOnlySpan<byte> key)
@@ -36,14 +44,15 @@ namespace TrimDB.Core.Storage
 
             span = span[sizeof(long)..(int)sizeOfKV];
 
-            var keylength = BinaryPrimitives.ReadInt32LittleEndian(span);
+            _keyLength = BinaryPrimitives.ReadInt32LittleEndian(span);
             span = span.Slice(sizeof(int));
 
-            _valueLength = span.Length - keylength;
-            _valueLocation = _location + sizeof(long) + sizeof(int) + keylength;
+            _valueLength = span.Length - _keyLength;
+            _valueLocation = _location + sizeof(long) + sizeof(int) + _keyLength;
+            _keyLocation = _location;
             _location += sizeOfKV;
 
-            key = span.Slice(0, keylength);
+            key = span.Slice(0, _keyLength);
             return true;
         }
 
