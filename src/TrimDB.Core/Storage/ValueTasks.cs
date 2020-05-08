@@ -7,9 +7,9 @@ namespace TrimDB.Core.Storage
 {
     public static class ValueTasks
     {
-        public static ValueTask<(SearchResult result, Memory<byte> value)> CreateResult(SearchResult result, Memory<byte> memory)
+        public static ValueTask<(SearchResult result, ReadOnlyMemory<byte> value)> CreateResult(SearchResult result, ReadOnlyMemory<byte> memory)
         {
-            return new ValueTask<(SearchResult result, Memory<byte> value)>((result, memory));
+            return new ValueTask<(SearchResult result, ReadOnlyMemory<byte> value)>((result, memory));
         }
     }
 }
