@@ -1,15 +1,16 @@
-﻿using BenchmarkDotNet.Running;
+﻿using System;
+using System.Text;
+using System.Threading.Tasks;
+using BenchmarkDotNet.Running;
+using TrimDB.Core;
+using TrimDB.Core.InMemory.SkipList32;
 
 namespace TrimDB.Benchmarks
 {
     public static class Program
     {
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
-            //var sl = new SkipListInsert();
-            //sl.GlobalSetup();
-            //await sl.MultiThreaded();
-
             var summary = BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
         }
     }

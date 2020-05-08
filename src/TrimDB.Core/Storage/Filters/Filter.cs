@@ -5,21 +5,14 @@ using System.Text;
 
 namespace TrimDB.Core.Storage.Filters
 {
-    public class Filter
+    public abstract class Filter
     {
-        public bool MayContainKey(long hashedValue)
-        {
-            return true;
-        }
+        public abstract bool MayContainKey(long hashedValue);
 
-        public void AddKey(ReadOnlySpan<byte> key)
-        {
+        public abstract bool AddKey(ReadOnlySpan<byte> key);
 
-        }
+        public abstract int WriteToPipe(PipeWriter pipeWriter);
 
-        public int WriteToPipe(PipeWriter pipeWriter)
-        {
-            return 0;
-        }
+        public abstract void LoadFromBlock(ReadOnlyMemory<byte> memory);
     }
 }

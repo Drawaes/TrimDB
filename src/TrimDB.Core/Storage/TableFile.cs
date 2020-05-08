@@ -4,25 +4,30 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection.Metadata.Ecma335;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using TrimDB.Core.Storage.Filters;
 
 namespace TrimDB.Core.Storage
 {
-    public class TableFile
+    public class TableFile : IDisposable
     {
         private readonly string _fileName;
         private ReadOnlyMemory<byte> _toc;
         private ReadOnlyMemory<byte> _firstKey;
         private ReadOnlyMemory<byte> _lastKey;
         private TocEntry[] _tocEntries;
-        private int _blockCount;
+        private long[] _blockEntries;
         private readonly int _index;
         private readonly int _level;
+        private Stream _fs;
+        private Filter _filter = new XorFilter();
+        private CountdownEvent _countDown = new CountdownEvent(1);
 
         public TableFile(string filename)
         {
@@ -34,64 +39,148 @@ namespace TrimDB.Core.Storage
 
         public int Index => _index;
         public int Level => _level;
+        public ReadOnlyMemory<byte> FirstKey => _firstKey;
+        public ReadOnlyMemory<byte> LastKey => _lastKey;
 
-        internal ValueTask<(SearchResult result, Memory<byte> value)> GetAsync(ReadOnlyMemory<byte> key, ulong hash)
+        public string FileName => _fileName;
+
+        internal ValueTask<SearchResultValue> GetAsync(ReadOnlyMemory<byte> key, ulong hash)
         {
+            if (!_filter.MayContainKey((long)hash))
+            {
+                return SearchResultValue.CreateValueTask(SearchResult.NotFound);
+            }
+
             var compare = key.Span.SequenceCompareTo(_firstKey.Span);
             if (compare < 0)
             {
                 // Search is before the files range
-                return ValueTasks.CreateResult(SearchResult.NotFound, default);
+                return SearchResultValue.CreateValueTask(SearchResult.NotFound);
             }
             else if (compare == 0)
             {
-                throw new NotImplementedException();
+                return GetFirstValue();
+
+                async ValueTask<SearchResultValue> GetFirstValue()
+                {
+                    var firstBlock = await GetKVBlock(0);
+                    firstBlock.TryGetNextKey(out _);
+                    return new SearchResultValue() { Result = SearchResult.Found, Value = firstBlock.GetCurrentValue() };
+                }
             }
 
             compare = key.Span.SequenceCompareTo(_lastKey.Span);
             if (compare > 0)
             {
                 // Search is after the files range
-                return ValueTasks.CreateResult(SearchResult.NotFound, default);
+                return SearchResultValue.CreateValueTask(SearchResult.NotFound);
             }
             else if (compare == 0)
             {
-                throw new NotImplementedException();
+                return GetLastValue();
+                async ValueTask<SearchResultValue> GetLastValue()
+                {
+                    var firstBlock = await GetKVBlock(0);
+                    firstBlock.GetLastKey();
+                    return new SearchResultValue() { Result = SearchResult.Found, Value = firstBlock.GetCurrentValue() };
+                }
             }
 
             // Do a binary search
+            return BinarySearchBlocks(key);
+        }
 
-            throw new NotImplementedException();
+        private async ValueTask<SearchResultValue> BinarySearchBlocks(ReadOnlyMemory<byte> key)
+        {
+            var min = 0;
+            var max = _blockEntries.Length - 1;
+
+            while (min <= max)
+            {
+                var mid = (min + max) / 2;
+                var block = await GetKVBlock(mid);
+                var result = block.TryFindKey(key.Span);
+                if (result == BlockReader.KeySearchResult.Found)
+                {
+                    return new SearchResultValue() { Result = SearchResult.Found, Value = block.GetCurrentValue() };
+                }
+                else if (result == BlockReader.KeySearchResult.NotFound)
+                {
+                    return new SearchResultValue() { Result = SearchResult.NotFound };
+                }
+                if (result == BlockReader.KeySearchResult.Before)
+                {
+                    max = mid - 1;
+                }
+                else
+                {
+                    min = mid + 1;
+                }
+            }
+
+            return new SearchResultValue { Result = SearchResult.NotFound };
         }
 
         public IEnumerator<TableItem> GetEnumerator() => new TableItemEnumerator(this);
 
         public async Task LoadAsync()
         {
-            using var fs = new FileStream(_fileName, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var length = fs.Length;
-            fs.Seek(-FileConsts.PageSize, SeekOrigin.End);
+            _fs = new FileStream(_fileName, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var length = _fs.Length;
+            _fs.Seek(-FileConsts.PageSize, SeekOrigin.End);
 
-            var pageBuffer = await GetBlockFromFile(fs, FileConsts.PageSize);
+            var pageBuffer = await GetBlockFromFile(FileConsts.PageSize);
 
-            await ReadFooter(fs, pageBuffer);
+            await ReadFooter(pageBuffer);
             ReadToc();
-            await LoadStatistics(fs);
-            await LoadBlockIndex(fs);
+            await LoadStatistics();
+            await LoadFilter();
+            await LoadBlockIndex();
         }
 
-        private Task LoadBlockIndex(FileStream fs)
+        private async Task LoadBlockIndex()
         {
             var blockIndex = _tocEntries.Single(te => te.EntryType == TocEntryType.BlockOffsets);
-            _blockCount = blockIndex.Length / 12;
-            return Task.CompletedTask;
+
+            _fs.Seek(blockIndex.Offset, SeekOrigin.Begin);
+
+            var indexBlock = await GetBlockFromFile(blockIndex.Length);
+
+            ReadBlockIndexSpan(indexBlock.Span);
+
+            void ReadBlockIndexSpan(ReadOnlySpan<byte> data)
+            {
+                var expectedLength = BinaryPrimitives.ReadInt32LittleEndian(data);
+                data = data.Slice(sizeof(int));
+                if (data.Length / sizeof(long) != expectedLength)
+                {
+                    throw new IndexOutOfRangeException($"Block index was {data.Length} but expected {expectedLength * sizeof(long)}");
+                }
+
+                _blockEntries = new long[expectedLength];
+
+                for (var i = 0; i < _blockEntries.Length; i++)
+                {
+                    var location = BinaryPrimitives.ReadInt64LittleEndian(data);
+                    data = data.Slice(sizeof(long));
+                    _blockEntries[i] = location;
+                }
+            }
+
         }
 
-        private async Task LoadStatistics(FileStream fs)
+        private async Task LoadFilter()
+        {
+            var filter = _tocEntries.Single(te => te.EntryType == TocEntryType.Filter);
+            var block = await GetBlockFromFile(filter.Offset, filter.Length);
+            _filter.LoadFromBlock(block);
+        }
+
+        private async Task LoadStatistics()
         {
             var stats = _tocEntries.Single(te => te.EntryType == TocEntryType.Statistics);
-            fs.Seek(stats.Offset, SeekOrigin.Begin);
-            var memoryBlock = await GetBlockFromFile(fs, stats.Length);
+            _fs.Seek(stats.Offset, SeekOrigin.Begin);
+            var memoryBlock = await GetBlockFromFile(stats.Length);
 
             LoadStats(memoryBlock.Span);
 
@@ -131,7 +220,21 @@ namespace TrimDB.Core.Storage
             }
         }
 
-        private async Task<ReadOnlyMemory<byte>> GetBlockFromFile(FileStream fs, int blockSize)
+        private async Task<BlockReader> GetKVBlock(int blockId)
+        {
+            var blockLocation = _blockEntries[blockId];
+            var block = await GetBlockFromFile(blockLocation, FileConsts.PageSize);
+            return new BlockReader(block);
+        }
+
+        private Task<ReadOnlyMemory<byte>> GetBlockFromFile(long location, int blockSize)
+        {
+            _fs.Seek(location, SeekOrigin.Begin);
+
+            return GetBlockFromFile(blockSize);
+        }
+
+        private async Task<ReadOnlyMemory<byte>> GetBlockFromFile(int blockSize)
         {
             var pageBuffer = new byte[blockSize];
 
@@ -139,7 +242,7 @@ namespace TrimDB.Core.Storage
 
             while (totalRead < blockSize)
             {
-                var result = await fs.ReadAsync(pageBuffer, totalRead, pageBuffer.Length - totalRead);
+                var result = await _fs.ReadAsync(pageBuffer, totalRead, pageBuffer.Length - totalRead);
                 if (result == -1)
                 {
                     throw new InvalidOperationException("Could not read any data from the file");
@@ -150,7 +253,7 @@ namespace TrimDB.Core.Storage
             return pageBuffer;
         }
 
-        private Task ReadFooter(FileStream fs, ReadOnlyMemory<byte> memory)
+        private Task ReadFooter(ReadOnlyMemory<byte> memory)
         {
             var buffer = memory.Span;
             var magicNumber = BinaryPrimitives.ReadUInt32LittleEndian(buffer[^4..]);
@@ -164,7 +267,7 @@ namespace TrimDB.Core.Storage
 
             if (tocSize > FileConsts.PageSize)
             {
-                return ReloadTOC(fs, tocSize);
+                return ReloadTOC(tocSize);
             }
             else
             {
@@ -173,11 +276,26 @@ namespace TrimDB.Core.Storage
 
             return Task.CompletedTask;
 
-            async Task ReloadTOC(FileStream fs, int tocSize)
+            async Task ReloadTOC(int tocSize)
             {
-                fs.Seek(-tocSize, SeekOrigin.End);
-                _toc = await GetBlockFromFile(fs, tocSize);
+                _fs.Seek(-tocSize, SeekOrigin.End);
+                _toc = await GetBlockFromFile(tocSize);
             }
+        }
+
+        public async Task LoadToMemory()
+        {
+            var memoryStream = new MemoryStream();
+            _fs.Seek(0, SeekOrigin.Begin);
+            await _fs.CopyToAsync(memoryStream);
+            var file = _fs;
+            _fs = memoryStream;
+            await file.DisposeAsync();
+        }
+
+        public void Dispose()
+        {
+            _fs.Dispose();
         }
     }
 }
