@@ -7,6 +7,8 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
+using System.Threading.Tasks.Dataflow;
+using TrimDB.Core.InMemory;
 using TrimDB.Core.Storage.Filters;
 
 namespace TrimDB.Core.Storage
@@ -30,6 +32,8 @@ namespace TrimDB.Core.Storage
         {
             _layer = layer;
         }
+
+        public List<TableFile> NewTableFiles => _newTableFiles;
 
         private void StartNewFile()
         {
@@ -72,28 +76,79 @@ namespace TrimDB.Core.Storage
             await tf.LoadAsync();
         }
 
-
-
         public async Task WriteFromMerger(TableFileMerger merger)
         {
-            StartNewFile();
-            while (await merger.MoveNextAsync())
+            await merger.MoveNextAsync();
+            while (true)
             {
                 // Set the first key as we must be at the start of a new file
                 if (_firstKey.Length == 0)
                 {
+                    StartNewFile();
                     _firstKey = merger.Current.Key.ToArray();
                 }
 
+                var mergerFinished = await WriteBlock(merger);
+                await _filePipe.FlushAsync();
 
-
-                if (_currentFileSize >= _layer.MaxFileSize)
+                if (_currentFileSize >= _layer.MaxFileSize || mergerFinished)
                 {
                     _lastKey = merger.Current.Key.ToArray();
 
                     await CloseOffCurrentTable();
+                    if (mergerFinished) return;
                 }
             }
+        }
+
+        private async Task<bool> WriteBlock(TableFileMerger merger)
+        {
+            var memBlock = _filePipe.GetMemory(FileConsts.PageSize);
+            var fullMemBlock = memBlock;
+
+            var currentOffset = _blockOffsets.Count * FileConsts.PageSize;
+            _blockOffsets.Add(currentOffset);
+
+            do
+            {
+                _itemCount++;
+
+                var sizeNeeded = SizeNeededOnBlock(merger.Current);
+
+                if (sizeNeeded > memBlock.Length)
+                {
+                    memBlock.Span.Fill(0);
+                    _filePipe.Advance(FileConsts.PageSize);
+                    _currentFileSize += FileConsts.PageSize;
+                    return false;
+                }
+
+                _currentFilter.AddKey(merger.Current.Key);
+                BinaryPrimitives.WriteInt64LittleEndian(memBlock.Span, sizeNeeded);
+                memBlock = memBlock[sizeof(long)..];
+
+                var keyLength = merger.Current.Key.Length;
+
+                BinaryPrimitives.WriteInt32LittleEndian(memBlock.Span, keyLength);
+                memBlock = memBlock[sizeof(int)..];
+
+                merger.Current.Key.CopyTo(memBlock.Span);
+                memBlock = memBlock[keyLength..];
+                merger.Current.Value.CopyTo(memBlock.Span);
+                memBlock = memBlock[merger.Current.Value.Length..];
+
+            } while (await merger.MoveNextAsync());
+
+            memBlock.Span.Fill(0);
+            _filePipe.Advance(FileConsts.PageSize);
+            _currentFileSize += FileConsts.PageSize;
+            return true;
+        }
+
+        private long SizeNeededOnBlock(IMemoryItem memoryItem)
+        {
+            var sizeNeeded = (long)(sizeof(long) + sizeof(int) + memoryItem.Key.Length + memoryItem.Value.Length);
+            return sizeNeeded;
         }
     }
 }

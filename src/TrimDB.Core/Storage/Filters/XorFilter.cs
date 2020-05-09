@@ -3,6 +3,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipelines;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using TrimDB.Core.Hashing;
@@ -168,7 +169,11 @@ namespace TrimDB.Core.Storage.Filters
 
         public override int WriteToPipe(PipeWriter pipeWriter)
         {
-            LoadFromKeys(_keys.ToArray());
+            var uniq = _keys.Distinct().ToArray();
+            var coll = (uniq.Count() - _keys.Count) / (double)_keys.Count;
+            Console.WriteLine($"We had {coll * 100}% keys smash into each other badly :) ");
+
+            LoadFromKeys(uniq);
             var sizeToSave = sizeof(byte) + sizeof(int) + sizeof(long) + _fingerPrints.Length;
             var span = pipeWriter.GetSpan(sizeToSave);
 

@@ -107,9 +107,17 @@ namespace TrimDB.Core.Storage
 
             var merger = new TableFileMerger(overlapped.Select(ol => ol.GetAsyncEnumerator()).ToArray());
             // Begin writing out to disk
+            var writer = new TableFileMergeWriter(nextLayer);
+            await writer.WriteFromMerger(merger);
 
+            nextLayer.AddAndRemoveTableFiles(writer.NewTableFiles, overlapped);
+            unsortedLayer.RemoveTable(oldestTable);
 
-            //throw new NotImplementedException();
+            foreach (var file in overlapped)
+            {
+                file.Dispose();
+                System.IO.File.Delete(file.FileName);
+            }
         }
 
         private List<TableFile> GetOverlappingTables(TableFile table, StorageLayer nextLayer)
@@ -120,7 +128,7 @@ namespace TrimDB.Core.Storage
 
             var overlapped = new List<TableFile>();
 
-            foreach(var lowerTable in tablesBelow)
+            foreach (var lowerTable in tablesBelow)
             {
                 var compare = firstKey.SequenceCompareTo(lowerTable.LastKey.Span);
                 if (compare > 0) continue;

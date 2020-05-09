@@ -58,7 +58,7 @@ namespace TrimDB.Core.Storage
 
             public ReadOnlySpan<byte> Key => CurrentBlock.GetCurrentKey();
 
-            public ReadOnlySpan<byte> Value => throw new NotImplementedException();
+            public ReadOnlySpan<byte> Value => CurrentBlock.GetCurrentValue().Span;
 
             public bool IsDeleted => throw new NotImplementedException();
         }

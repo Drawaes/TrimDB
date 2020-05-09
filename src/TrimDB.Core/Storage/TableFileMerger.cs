@@ -46,7 +46,7 @@ namespace TrimDB.Core.Storage
             var iteratorCopy = _memoryItems;
             for (var i = 1; i < iteratorCopy.Length; i++)
             {
-                var currentIterator = _memoryItems[i];
+                var currentIterator = iteratorCopy[i];
                 var compare = _currentIterator.Current.Key.SequenceCompareTo(currentIterator.Current.Key);
                 if (compare == 0)
                 {

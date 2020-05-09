@@ -96,5 +96,33 @@ namespace TrimDB.Core.Storage
                 }
             }
         }
+
+        internal void AddAndRemoveTableFiles(List<TableFile> newTableFiles, List<TableFile> overlapped)
+        {
+            while (true)
+            {
+                var tfs = _tableFiles;
+                var newLength = newTableFiles.Count + tfs.Length - (overlapped.Count - 1);
+
+                var newTable = new TableFile[newLength];
+                var tfCounter = 0;
+                for (var i = 0; i < newTable.Length - newTableFiles.Count; i++)
+                {
+                    while (overlapped.Contains(tfs[tfCounter]))
+                    {
+                        tfCounter++;
+                    }
+                    newTable[i] = tfs[tfCounter];
+                    tfCounter++;
+                }
+
+                newTableFiles.CopyTo(newTable, newTable.Length - newTableFiles.Count);
+                if (Interlocked.CompareExchange(ref _tableFiles, newTable, tfs) == tfs)
+                {
+                    return;
+                }
+            }
+
+        }
     }
 }
