@@ -24,6 +24,7 @@ namespace TrimDB.Core.Storage
 
         public ValueTask DisposeAsync()
         {
+            _blockReader?.Dispose();
             _tableFile.ReleaseIterator();
             return default;
         }
@@ -43,6 +44,7 @@ namespace TrimDB.Core.Storage
             }
 
             _blockNumber++;
+            _blockReader?.Dispose();
             _blockReader = await _tableFile.GetKVBlock(_blockNumber);
             if (_blockReader == null)
             {

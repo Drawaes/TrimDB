@@ -83,23 +83,23 @@ namespace TrimDB.Core.Storage
             var oldestTable = tables[0];
 
             // We maybe able to push a file straight down look for exclusive ranges
-            if (nextLayer.NumberOfTables < nextLayer.MaxFilesAtLayer)
-            {
-                if (DoesTableFitWithNoOverlap(oldestTable, nextLayer))
-                {
-                    // Candidate for merging
-                    var newFilename = nextLayer.GetNextFileName();
-                    var oldFileName = oldestTable.FileName;
-                    await oldestTable.LoadToMemory();
-                    System.IO.File.Move(oldFileName, newFilename);
-                    var newTable = new TableFile(newFilename);
-                    await newTable.LoadAsync();
-                    nextLayer.AddTableFile(newTable);
-                    unsortedLayer.RemoveTable(oldestTable);
-                    oldestTable.Dispose();
-                    return;
-                }
-            }
+            //if (nextLayer.NumberOfTables < nextLayer.MaxFilesAtLayer)
+            //{
+            //    if (DoesTableFitWithNoOverlap(oldestTable, nextLayer))
+            //    {
+            //        // Candidate for merging
+            //        var newFilename = nextLayer.GetNextFileName();
+            //        var oldFileName = oldestTable.FileName;
+            //        await oldestTable.LoadToMemory();
+            //        System.IO.File.Move(oldFileName, newFilename);
+            //        var newTable = new TableFile(newFilename, _database.BlockCache);
+            //        await newTable.LoadAsync();
+            //        nextLayer.AddTableFile(newTable);
+            //        unsortedLayer.RemoveTable(oldestTable);
+            //        oldestTable.Dispose();
+            //        return;
+            //    }
+            //}
 
             // Get all of the overlapping tables
             var overlapped = GetOverlappingTables(oldestTable, nextLayer);
@@ -107,7 +107,7 @@ namespace TrimDB.Core.Storage
 
             var merger = new TableFileMerger(overlapped.Select(ol => ol.GetAsyncEnumerator()).ToArray());
             // Begin writing out to disk
-            var writer = new TableFileMergeWriter(nextLayer);
+            var writer = new TableFileMergeWriter(nextLayer, _database.BlockCache);
             await writer.WriteFromMerger(merger);
 
             nextLayer.AddAndRemoveTableFiles(writer.NewTableFiles, overlapped);
@@ -168,7 +168,7 @@ namespace TrimDB.Core.Storage
                     var nextFilename = _storageLayer.GetNextFileName();
                     var fileWriter = new TableFileWriter(nextFilename);
                     await fileWriter.SaveMemoryTable(sl);
-                    var tableFile = new TableFile(fileWriter.FileName);
+                    var tableFile = new TableFile(fileWriter.FileName, _database.BlockCache);
                     await tableFile.LoadAsync();
                     _storageLayer.AddTableFile(tableFile);
                     _database.RemoveMemoryTable(sl);

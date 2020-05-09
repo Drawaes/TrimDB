@@ -13,11 +13,12 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using TrimDB.Core.InMemory;
+using TrimDB.Core.Storage.BlockCache;
 using TrimDB.Core.Storage.Filters;
 
 namespace TrimDB.Core.Storage
 {
-    public class TableFile : IDisposable, IAsyncEnumerable<IMemoryItem>
+    public class TableFile : IAsyncEnumerable<IMemoryItem>
     {
         private readonly string _fileName;
         private ReadOnlyMemory<byte> _toc;
@@ -27,12 +28,13 @@ namespace TrimDB.Core.Storage
         private long[] _blockEntries;
         private readonly int _index;
         private readonly int _level;
-        private Stream _fs;
         private Filter _filter = new XorFilter();
         private CountdownEvent _countDown = new CountdownEvent(1);
+        private BlockCache.BlockCache _blockCache;
 
-        public TableFile(string filename)
+        public TableFile(string filename, BlockCache.BlockCache blockCache)
         {
+            _blockCache = blockCache;
             _fileName = filename;
             var numbers = Path.GetFileNameWithoutExtension(filename)["Level".Length..].Split('_');
             _level = int.Parse(numbers[0]);
@@ -45,6 +47,7 @@ namespace TrimDB.Core.Storage
         public ReadOnlyMemory<byte> LastKey => _lastKey;
         public int BlockCount => _blockEntries.Length;
         public string FileName => _fileName;
+        public FileIdentifier FileId => new FileIdentifier() { FileId = _index, Level = _level };
 
         internal ValueTask<SearchResultValue> GetAsync(ReadOnlyMemory<byte> key, ulong hash)
         {
@@ -65,7 +68,7 @@ namespace TrimDB.Core.Storage
 
                 async ValueTask<SearchResultValue> GetFirstValue()
                 {
-                    var firstBlock = await GetKVBlock(0);
+                    using var firstBlock = await GetKVBlock(0);
                     firstBlock.TryGetNextKey(out _);
                     return new SearchResultValue() { Result = SearchResult.Found, Value = firstBlock.GetCurrentValue() };
                 }
@@ -82,7 +85,7 @@ namespace TrimDB.Core.Storage
                 return GetLastValue();
                 async ValueTask<SearchResultValue> GetLastValue()
                 {
-                    var firstBlock = await GetKVBlock(0);
+                    using var firstBlock = await GetKVBlock(0);
                     firstBlock.GetLastKey();
                     return new SearchResultValue() { Result = SearchResult.Found, Value = firstBlock.GetCurrentValue() };
                 }
@@ -100,7 +103,7 @@ namespace TrimDB.Core.Storage
             while (min <= max)
             {
                 var mid = (min + max) / 2;
-                var block = await GetKVBlock(mid);
+                using var block = await GetKVBlock(mid);
                 var result = block.TryFindKey(key.Span);
                 if (result == BlockReader.KeySearchResult.Found)
                 {
@@ -125,28 +128,36 @@ namespace TrimDB.Core.Storage
 
         public IEnumerator<TableItem> GetEnumerator() => new TableItemEnumerator(this);
 
-        public async Task LoadAsync()
+        internal void Dispose()
         {
-            _fs = new FileStream(_fileName, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var length = _fs.Length;
-            _fs.Seek(-FileConsts.PageSize, SeekOrigin.End);
-
-            var pageBuffer = await GetBlockFromFile(FileConsts.PageSize);
-
-            await ReadFooter(pageBuffer);
-            ReadToc();
-            await LoadStatistics();
-            await LoadFilter();
-            await LoadBlockIndex();
+            _countDown.Wait();
+            _blockCache.RemoveFile(FileId);
         }
 
-        private async Task LoadBlockIndex()
+        public async Task LoadAsync()
+        {
+            await using (var fs = new FileStream(_fileName, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                var length = fs.Length;
+                fs.Seek(-FileConsts.PageSize, SeekOrigin.End);
+                var pageBuffer = await GetBlockFromFile(fs, FileConsts.PageSize);
+
+                await ReadFooter(fs, pageBuffer);
+                ReadToc();
+                await LoadStatistics(fs);
+                await LoadFilter(fs);
+                await LoadBlockIndex(fs);
+            }
+            _blockCache.RegisterFile(_fileName, FileId);
+        }
+
+        private async Task LoadBlockIndex(FileStream fs)
         {
             var blockIndex = _tocEntries.Single(te => te.EntryType == TocEntryType.BlockOffsets);
 
-            _fs.Seek(blockIndex.Offset, SeekOrigin.Begin);
+            fs.Seek(blockIndex.Offset, SeekOrigin.Begin);
 
-            var indexBlock = await GetBlockFromFile(blockIndex.Length);
+            var indexBlock = await GetBlockFromFile(fs, blockIndex.Length);
 
             ReadBlockIndexSpan(indexBlock.Span);
 
@@ -171,18 +182,18 @@ namespace TrimDB.Core.Storage
 
         }
 
-        private async Task LoadFilter()
+        private async Task LoadFilter(FileStream fs)
         {
             var filter = _tocEntries.Single(te => te.EntryType == TocEntryType.Filter);
-            var block = await GetBlockFromFile(filter.Offset, filter.Length);
+            var block = await GetBlockFromFile(fs, filter.Offset, filter.Length);
             _filter.LoadFromBlock(block);
         }
 
-        private async Task LoadStatistics()
+        private async Task LoadStatistics(FileStream fs)
         {
             var stats = _tocEntries.Single(te => te.EntryType == TocEntryType.Statistics);
-            _fs.Seek(stats.Offset, SeekOrigin.Begin);
-            var memoryBlock = await GetBlockFromFile(stats.Length);
+            fs.Seek(stats.Offset, SeekOrigin.Begin);
+            var memoryBlock = await GetBlockFromFile(fs, stats.Length);
 
             LoadStats(memoryBlock.Span);
 
@@ -225,19 +236,18 @@ namespace TrimDB.Core.Storage
         public async Task<BlockReader> GetKVBlock(int blockId)
         {
             if (blockId >= _blockEntries.Length) return null;
-            var blockLocation = _blockEntries[blockId];
-            var block = await GetBlockFromFile(blockLocation, FileConsts.PageSize);
-            return new BlockReader(block);
+            var br = new BlockReader(await _blockCache.GetBlock(FileId, blockId));
+            return br;
         }
 
-        private Task<ReadOnlyMemory<byte>> GetBlockFromFile(long location, int blockSize)
+        private Task<ReadOnlyMemory<byte>> GetBlockFromFile(FileStream fs, long location, int blockSize)
         {
-            _fs.Seek(location, SeekOrigin.Begin);
+            fs.Seek(location, SeekOrigin.Begin);
 
-            return GetBlockFromFile(blockSize);
+            return GetBlockFromFile(fs, blockSize);
         }
 
-        private async Task<ReadOnlyMemory<byte>> GetBlockFromFile(int blockSize)
+        private async Task<ReadOnlyMemory<byte>> GetBlockFromFile(FileStream fs, int blockSize)
         {
             var pageBuffer = new byte[blockSize];
 
@@ -245,7 +255,7 @@ namespace TrimDB.Core.Storage
 
             while (totalRead < blockSize)
             {
-                var result = await _fs.ReadAsync(pageBuffer, totalRead, pageBuffer.Length - totalRead);
+                var result = await fs.ReadAsync(pageBuffer, totalRead, pageBuffer.Length - totalRead);
                 if (result == -1)
                 {
                     throw new InvalidOperationException("Could not read any data from the file");
@@ -256,7 +266,7 @@ namespace TrimDB.Core.Storage
             return pageBuffer;
         }
 
-        private Task ReadFooter(ReadOnlyMemory<byte> memory)
+        private Task ReadFooter(FileStream fs, ReadOnlyMemory<byte> memory)
         {
             var buffer = memory.Span;
             var magicNumber = BinaryPrimitives.ReadUInt32LittleEndian(buffer[^4..]);
@@ -270,7 +280,7 @@ namespace TrimDB.Core.Storage
 
             if (tocSize > FileConsts.PageSize)
             {
-                return ReloadTOC(tocSize);
+                return ReloadTOC(fs, tocSize);
             }
             else
             {
@@ -279,36 +289,32 @@ namespace TrimDB.Core.Storage
 
             return Task.CompletedTask;
 
-            async Task ReloadTOC(int tocSize)
+            async Task ReloadTOC(FileStream fs, int tocSize)
             {
-                _fs.Seek(-tocSize, SeekOrigin.End);
-                _toc = await GetBlockFromFile(tocSize);
+                fs.Seek(-tocSize, SeekOrigin.End);
+                _toc = await GetBlockFromFile(fs, tocSize);
             }
         }
 
         public async Task LoadToMemory()
         {
-            var memoryStream = new MemoryStream();
-            _fs.Seek(0, SeekOrigin.Begin);
-            await _fs.CopyToAsync(memoryStream);
-            var file = _fs;
-            _fs = memoryStream;
-            await file.DisposeAsync();
-        }
-
-        public void Dispose()
-        {
-            _fs.Dispose();
+            //var memoryStream = new MemoryStream();
+            //_fs.Seek(0, SeekOrigin.Begin);
+            //await _fs.CopyToAsync(memoryStream);
+            //var file = _fs;
+            //_fs = memoryStream;
+            //await file.DisposeAsync();
         }
 
         public IAsyncEnumerator<IMemoryItem> GetAsyncEnumerator(CancellationToken cancellationToken = default)
         {
+            _countDown.AddCount(1);
             return new TableFileEnumerator(this);
         }
 
         internal void ReleaseIterator()
         {
-            //TODO: Release lock on table file when iterator is completed
+            _countDown.Signal();
         }
     }
 }

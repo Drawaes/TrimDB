@@ -14,8 +14,8 @@ namespace TrimDB.Core.Storage
 
         public override int NumberOfTables => _tableFiles.Length;
 
-        public UnsortedStorageLayer(int level, string databaseFolder)
-            : base(databaseFolder, level)
+        public UnsortedStorageLayer(int level, string databaseFolder, BlockCache.BlockCache blockCache)
+            : base(databaseFolder, level, blockCache)
         {
 
         }

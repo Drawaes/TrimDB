@@ -7,8 +7,8 @@ namespace TrimDB.Core.Storage
 {
     public class SortedStorageLayer : StorageLayer
     {
-        public SortedStorageLayer(int level, string databaseFolder)
-            : base(databaseFolder, level)
+        public SortedStorageLayer(int level, string databaseFolder, BlockCache.BlockCache blockCache)
+            : base(databaseFolder, level, blockCache)
         {
         }
 

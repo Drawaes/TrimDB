@@ -30,11 +30,11 @@ namespace TrimDB.Core.Facts
 
             var filePath = "C:\\code\\trimdb\\test.trim";
 
-            var writer = new TableFileWriter(filePath);
-            await writer.SaveMemoryTable(skipList);
+            //var writer = new TableFileWriter(filePath);
+            //await writer.SaveMemoryTable(skipList);
 
-            var reader = new TableFile(writer.FileName);
-            await reader.LoadAsync();
+            //var reader = new TableFile(writer.FileName, null);
+            //await reader.LoadAsync();
         }
         //    bytes.Sort(Compare);
 

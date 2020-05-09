@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
@@ -6,8 +7,9 @@ using System.Text;
 
 namespace TrimDB.Core.Storage
 {
-    public class BlockReader
+    public class BlockReader : IDisposable
     {
+        private IMemoryOwner<byte> _owner;
         private ReadOnlyMemory<byte> _blockData;
         private long _location;
         private long _valueLocation;
@@ -15,9 +17,10 @@ namespace TrimDB.Core.Storage
         private int _keyLength;
         private int _keyLocation;
 
-        public BlockReader(ReadOnlyMemory<byte> blockData)
+        public BlockReader(IMemoryOwner<byte> owner)
         {
-            _blockData = blockData;
+            _owner = owner;
+            _blockData = owner.Memory;
         }
 
         public ReadOnlySpan<byte> GetCurrentKey()
@@ -91,6 +94,8 @@ namespace TrimDB.Core.Storage
 
             return KeySearchResult.After;
         }
+
+        public void Dispose() => _owner.Dispose();
 
         public enum KeySearchResult
         {

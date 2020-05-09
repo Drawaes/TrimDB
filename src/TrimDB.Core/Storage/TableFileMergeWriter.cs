@@ -16,6 +16,7 @@ namespace TrimDB.Core.Storage
     public class TableFileMergeWriter
     {
         private StorageLayer _layer;
+        private readonly BlockCache.BlockCache _blockCache;
         private List<TableFile> _newTableFiles = new List<TableFile>();
 
         private string _fileName;
@@ -28,9 +29,11 @@ namespace TrimDB.Core.Storage
         private List<long> _blockOffsets;
         private int _itemCount;
 
-        public TableFileMergeWriter(StorageLayer layer)
+
+        public TableFileMergeWriter(StorageLayer layer, BlockCache.BlockCache blockCache)
         {
             _layer = layer;
+            _blockCache = blockCache;
         }
 
         public List<TableFile> NewTableFiles => _newTableFiles;
@@ -71,7 +74,7 @@ namespace TrimDB.Core.Storage
             await _filePipe.CompleteAsync();
             await _fileStream.DisposeAsync();
 
-            var tf = new TableFile(_fileName);
+            var tf = new TableFile(_fileName, _blockCache);
             _newTableFiles.Add(tf);
             await tf.LoadAsync();
         }

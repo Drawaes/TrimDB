@@ -13,9 +13,10 @@ namespace TrimDB.Core.Storage
         protected TableFile[] _tableFiles;
         protected int[] _tableFileIndices;
         private int _maxFileIndex = -1;
+        private BlockCache.BlockCache _blockCache;
 
 
-        public StorageLayer(string databaseFolder, int level)
+        public StorageLayer(string databaseFolder, int level, BlockCache.BlockCache blockCache)
         {
             _databaseFolder = databaseFolder;
             _level = level;
@@ -29,7 +30,7 @@ namespace TrimDB.Core.Storage
             {
                 for (var i = 0; i < _tableFiles.Length; i++)
                 {
-                    var table = new TableFile(levelFiles[i]);
+                    var table = new TableFile(levelFiles[i], _blockCache);
                     if (table.Level != level)
                     {
                         throw new InvalidOperationException();
