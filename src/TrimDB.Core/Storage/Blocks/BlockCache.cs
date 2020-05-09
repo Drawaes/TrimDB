@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace TrimDB.Core.Storage.BlockCache
+namespace TrimDB.Core.Storage.Blocks
 {
     public class BlockCache
     {

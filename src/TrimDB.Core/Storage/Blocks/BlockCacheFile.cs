@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace TrimDB.Core.Storage.BlockCache
+namespace TrimDB.Core.Storage.Blocks
 {
     public class BlockCacheFile:IDisposable
     {
