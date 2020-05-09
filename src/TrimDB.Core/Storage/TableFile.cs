@@ -51,10 +51,10 @@ namespace TrimDB.Core.Storage
 
         internal ValueTask<SearchResultValue> GetAsync(ReadOnlyMemory<byte> key, ulong hash)
         {
-            if (!_filter.MayContainKey((long)hash))
-            {
-                return SearchResultValue.CreateValueTask(SearchResult.NotFound);
-            }
+            //if (!_filter.MayContainKey((long)hash))
+            //{
+            //    return SearchResultValue.CreateValueTask(SearchResult.NotFound);
+            //}
 
             var compare = key.Span.SequenceCompareTo(_firstKey.Span);
             if (compare < 0)
@@ -107,7 +107,7 @@ namespace TrimDB.Core.Storage
                 var result = block.TryFindKey(key.Span);
                 if (result == BlockReader.KeySearchResult.Found)
                 {
-                    return new SearchResultValue() { Result = SearchResult.Found, Value = block.GetCurrentValue() };
+                    return new SearchResultValue() { Result = SearchResult.Found, Value = block.GetCurrentValue().ToArray() };
                 }
                 else if (result == BlockReader.KeySearchResult.NotFound)
                 {

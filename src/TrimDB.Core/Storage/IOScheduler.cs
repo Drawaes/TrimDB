@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using TrimDB.Core.InMemory;
+using TrimDB.Core.Storage.Layers;
 
 namespace TrimDB.Core.Storage
 {
@@ -47,26 +48,26 @@ namespace TrimDB.Core.Storage
         {
             while (!_token.IsCancellationRequested)
             {
-                foreach (var sl in _database.StorageLayers)
-                {
-                    switch (sl)
-                    {
-                        case SortedStorageLayer sortedLayer:
-                            if (_sortedStrategy(sortedLayer))
-                            {
-                                throw new NotImplementedException("We should merge here");
-                            }
-                            break;
-                        case UnsortedStorageLayer unsorted:
-                            if (_unsortedStrategy(unsorted))
-                            {
-                                await MergeUnsortedLayer(unsorted);
-                            }
-                            break;
-                        default:
-                            throw new InvalidOperationException("We have a type of storage layer we don't know what to do with");
-                    }
-                }
+                //foreach (var sl in _database.StorageLayers)
+                //{
+                //    switch (sl)
+                //    {
+                //        case SortedStorageLayer sortedLayer:
+                //            if (_sortedStrategy(sortedLayer))
+                //            {
+                //                throw new NotImplementedException("We should merge here");
+                //            }
+                //            break;
+                //        case UnsortedStorageLayer unsorted:
+                //            if (_unsortedStrategy(unsorted))
+                //            {
+                //                await MergeUnsortedLayer(unsorted);
+                //            }
+                //            break;
+                //        default:
+                //            throw new InvalidOperationException("We have a type of storage layer we don't know what to do with");
+                //    }
+                //}
 
                 await Task.Delay(TimeSpan.FromMilliseconds(100), _token.Token);
             }

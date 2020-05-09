@@ -8,6 +8,7 @@ using TrimDB.Core.Hashing;
 using TrimDB.Core.InMemory;
 using TrimDB.Core.Storage;
 using TrimDB.Core.Storage.BlockCache;
+using TrimDB.Core.Storage.Layers;
 
 namespace TrimDB.Core
 {

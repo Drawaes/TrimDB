@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using TrimDB.Core.InMemory;
 using TrimDB.Core.Storage.Filters;
+using TrimDB.Core.Storage.Layers;
 
 namespace TrimDB.Core.Storage
 {

@@ -1,11 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using NuGet.Frameworks;
 using TrimDB.Core.InMemory.SkipList32;
-using TrimDB.Core.InMemory.SkipList64;
 using Xunit;
 
 namespace TrimDB.Core.Facts
@@ -34,7 +31,7 @@ namespace TrimDB.Core.Facts
             var key = Encoding.UTF8.GetBytes(loadedWords[0]);
             var expectedValue = Encoding.UTF8.GetBytes($"VALUE={loadedWords[0]}");
 
-            await Task.Delay(TimeSpan.FromSeconds(10));
+            //await Task.Delay(TimeSpan.FromSeconds(10));
 
             var result = await db.GetAsync(key);
 
@@ -46,8 +43,8 @@ namespace TrimDB.Core.Facts
 
             Assert.Equal(expectedValue.ToArray(), result.ToArray());
 
-            key = Encoding.UTF8.GetBytes(loadedWords[loadedWords.Length - 1]);
-            expectedValue = Encoding.UTF8.GetBytes($"VALUE={loadedWords[loadedWords.Length - 1]}");
+            key = Encoding.UTF8.GetBytes(loadedWords[^1]);
+            expectedValue = Encoding.UTF8.GetBytes($"VALUE={loadedWords[^1]}");
             result = await db.GetAsync(key);
 
             Assert.Equal(expectedValue.ToArray(), result.ToArray());

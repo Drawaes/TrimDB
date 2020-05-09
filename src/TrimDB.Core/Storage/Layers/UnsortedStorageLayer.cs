@@ -1,10 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 
-namespace TrimDB.Core.Storage
+namespace TrimDB.Core.Storage.Layers
 {
     public class UnsortedStorageLayer : StorageLayer
     {
