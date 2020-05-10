@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
+using TrimDB.Core.Storage.Blocks;
 
 namespace TrimDB.Core.Storage.Layers
 {
@@ -13,7 +14,7 @@ namespace TrimDB.Core.Storage.Layers
 
         public override int NumberOfTables => _tableFiles.Length;
 
-        public UnsortedStorageLayer(int level, string databaseFolder, BlockCache.BlockCache blockCache)
+        public UnsortedStorageLayer(int level, string databaseFolder, BlockCache blockCache)
             : base(databaseFolder, level, blockCache)
         {
 
@@ -22,8 +23,11 @@ namespace TrimDB.Core.Storage.Layers
         public override async ValueTask<SearchResultValue> GetAsync(ReadOnlyMemory<byte> key, ulong hash)
         {
             var tfs = _tableFiles;
-            foreach (var tf in tfs)
+
+            // Search the most recent (largest index) first
+            for (var i = tfs.Length - 1; i >= 0; i--)
             {
+                var tf = tfs[i];
                 var result = await tf.GetAsync(key, hash);
                 if (result.Result == SearchResult.Deleted || result.Result == SearchResult.Found)
                 {

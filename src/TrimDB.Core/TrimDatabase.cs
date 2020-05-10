@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using TrimDB.Core.Hashing;
 using TrimDB.Core.InMemory;
 using TrimDB.Core.Storage;
-using TrimDB.Core.Storage.BlockCache;
+using TrimDB.Core.Storage.Blocks;
 using TrimDB.Core.Storage.Layers;
 
 namespace TrimDB.Core
@@ -81,7 +81,7 @@ namespace TrimDB.Core
 
             var copiedMemory = MemoryPool<byte>.Shared.Rent(key.Length);
             key.CopyTo(copiedMemory.Memory.Span);
-            return GetAsyncInternal(copiedMemory.Memory.Slice(0,key.Length));
+            return GetAsyncInternal(copiedMemory.Memory.Slice(0, key.Length));
         }
 
         internal void RemoveMemoryTable(MemoryTable sl)

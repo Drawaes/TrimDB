@@ -3,23 +3,24 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using TrimDB.Core.Storage.Blocks;
 
 namespace TrimDB.Core.Storage.Layers
 {
     public abstract class StorageLayer
     {
-        private string _databaseFolder;
-        private int _level;
+        private readonly string _databaseFolder;
+        private readonly int _level;
         protected TableFile[] _tableFiles;
         protected int[] _tableFileIndices;
         private int _maxFileIndex = -1;
-        private BlockCache.BlockCache _blockCache;
+        private readonly BlockCache _blockCache;
 
-
-        public StorageLayer(string databaseFolder, int level, BlockCache.BlockCache blockCache)
+        public StorageLayer(string databaseFolder, int level, BlockCache blockCache)
         {
             _databaseFolder = databaseFolder;
             _level = level;
+            _blockCache = blockCache;
 
             var levelFiles = System.IO.Directory.GetFiles(_databaseFolder, "Level???_*.trim");
 
@@ -31,11 +32,11 @@ namespace TrimDB.Core.Storage.Layers
                 for (var i = 0; i < _tableFiles.Length; i++)
                 {
                     var table = new TableFile(levelFiles[i], _blockCache);
-                    if (table.Level != level)
+                    if (table.FileId.Level != level)
                     {
                         throw new InvalidOperationException();
                     }
-                    _tableFileIndices[i] = table.Index;
+                    _tableFileIndices[i] = table.FileId.FileId;
                     _tableFiles[i] = table;
                 }
 

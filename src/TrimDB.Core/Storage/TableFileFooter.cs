@@ -5,21 +5,22 @@ using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using TrimDB.Core.Storage.MetaData;
 
 namespace TrimDB.Core.Storage
 {
     public static class TableFileFooter
     {
-        public static Span<byte> WriteTOCEntry(Span<byte> span, TocEntryType tocType, long offset, int length)
+        public static Span<byte> WriteTOCEntry(Span<byte> span, TableOfContentsEntryType tocType, long offset, int length)
         {
-            var tocEntry = new TocEntry() { EntryType = tocType, Offset = offset, Length = length };
+            var tocEntry = new TableOfContentsEntry() { EntryType = tocType, Offset = offset, Length = length };
             Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(span), tocEntry);
-            return span[Unsafe.SizeOf<TocEntry>()..];
+            return span[Unsafe.SizeOf<TableOfContentsEntry>()..];
         }
 
-        public static void WriteTOC(PipeWriter filePipe, params TocEntry[] tocEntries)
+        public static void WriteTOC(PipeWriter filePipe, params TableOfContentsEntry[] tocEntries)
         {
-            var tocSize = tocEntries.Length * Unsafe.SizeOf<TocEntry>();
+            var tocSize = tocEntries.Length * Unsafe.SizeOf<TableOfContentsEntry>();
             tocSize += sizeof(uint) + sizeof(int) + sizeof(int);
 
             var span = filePipe.GetSpan(tocSize);

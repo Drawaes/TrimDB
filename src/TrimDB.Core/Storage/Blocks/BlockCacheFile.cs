@@ -8,14 +8,14 @@ using System.Threading.Tasks;
 
 namespace TrimDB.Core.Storage.Blocks
 {
-    public class BlockCacheFile:IDisposable
+    public class BlockCacheFile : IDisposable
     {
-        private string _fileName;
-        private MemoryMappedFile _mappedFile;
-        private MemoryMappedViewAccessor _mappedView;
-        private IntPtr _ptr;
-        private FileIdentifier _fileId;
-        private BlockCache _parentCache;
+        private readonly string _fileName;
+        private readonly MemoryMappedFile _mappedFile;
+        private readonly MemoryMappedViewAccessor _mappedView;
+        private readonly IntPtr _ptr;
+        private readonly FileIdentifier _fileId;
+        private readonly BlockCache _parentCache;
         private int _numberOfRefs;
 
         public unsafe BlockCacheFile(string fileName, FileIdentifier fileId, BlockCache parentCache)

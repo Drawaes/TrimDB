@@ -7,9 +7,9 @@ using System.Threading.Tasks;
 
 namespace TrimDB.Core.Storage.Blocks
 {
-    public class BlockCache
+    public class BlockCache : IDisposable
     {
-        private ConcurrentDictionary<FileIdentifier, BlockCacheFile> _cache = new ConcurrentDictionary<FileIdentifier, BlockCacheFile>();
+        private readonly ConcurrentDictionary<FileIdentifier, BlockCacheFile> _cache = new ConcurrentDictionary<FileIdentifier, BlockCacheFile>();
 
         public void RegisterFile(string fileName, FileIdentifier id)
         {
@@ -42,21 +42,29 @@ namespace TrimDB.Core.Storage.Blocks
         {
             throw new NotImplementedException();
         }
+
+        public void Dispose()
+        {
+            foreach (var bcf in _cache.Values)
+            {
+                bcf.Dispose();
+            }
+        }
     }
 
     public class BlockCacheMemory : MemoryManager<byte>
     {
-        private BlockCache _blockCache;
-        private FileIdentifier _fileId;
-        private int _blockId;
-        private IntPtr _ptr;
+        private readonly BlockCache _blockCache;
+        private readonly FileIdentifier _fileId;
+        private readonly int _blockId;
+        private readonly IntPtr _ptr;
 
         public BlockCacheMemory(BlockCache blockCache, FileIdentifier fileId, int blockId, IntPtr ptr)
         {
             _blockCache = blockCache;
             _fileId = fileId;
             _blockId = blockId;
-            _ptr = ptr;
+            _ptr = IntPtr.Add(ptr, blockId * FileConsts.PageSize);
         }
 
         public int BlockId => _blockId;

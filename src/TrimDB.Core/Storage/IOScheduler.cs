@@ -20,8 +20,8 @@ namespace TrimDB.Core.Storage
         private readonly Task _mergeTask;
         private readonly UnsortedStorageLayer _storageLayer;
         private readonly TrimDatabase _database;
-        private Func<StorageLayer, bool> _sortedStrategy;
-        private Func<StorageLayer, bool> _unsortedStrategy;
+        private readonly Func<StorageLayer, bool> _sortedStrategy;
+        private readonly Func<StorageLayer, bool> _unsortedStrategy;
 
         public IOScheduler(int maxSkiplistBacklog, UnsortedStorageLayer storageLayer, TrimDatabase database)
         {
@@ -178,8 +178,6 @@ namespace TrimDB.Core.Storage
                 {
                     Console.WriteLine("Error " + ex);
                 }
-                //TODO : Remove the memory table from the database
-
             }
         }
     }

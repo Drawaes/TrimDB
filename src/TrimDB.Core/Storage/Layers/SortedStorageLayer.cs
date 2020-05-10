@@ -2,12 +2,13 @@
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
+using TrimDB.Core.Storage.Blocks;
 
 namespace TrimDB.Core.Storage.Layers
 {
     public class SortedStorageLayer : StorageLayer
     {
-        public SortedStorageLayer(int level, string databaseFolder, BlockCache.BlockCache blockCache)
+        public SortedStorageLayer(int level, string databaseFolder, BlockCache blockCache)
             : base(databaseFolder, level, blockCache)
         {
         }

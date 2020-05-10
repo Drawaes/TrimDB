@@ -72,7 +72,6 @@ namespace TrimDB.Core.Facts
         {
             var loadedWords = await System.IO.File.ReadAllLinesAsync("words.txt");
 
-
             foreach (var word in loadedWords)
             {
                 var utf8 = Encoding.UTF8.GetBytes(word);
@@ -80,6 +79,5 @@ namespace TrimDB.Core.Facts
                 memoryTable.Put(utf8, value);
             }
         }
-
     }
 }

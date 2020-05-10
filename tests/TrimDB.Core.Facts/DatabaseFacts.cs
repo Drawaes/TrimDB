@@ -57,7 +57,7 @@ namespace TrimDB.Core.Facts
             //    await db.PutAsync(utf8, value);
             //}
 
-            await Task.Delay(TimeSpan.FromSeconds(10));
+            //await Task.Delay(TimeSpan.FromSeconds(10));
         }
     }
 }

@@ -9,16 +9,18 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using TrimDB.Core.InMemory;
+using TrimDB.Core.Storage.Blocks;
 using TrimDB.Core.Storage.Filters;
 using TrimDB.Core.Storage.Layers;
+using TrimDB.Core.Storage.MetaData;
 
 namespace TrimDB.Core.Storage
 {
     public class TableFileMergeWriter
     {
-        private StorageLayer _layer;
-        private readonly BlockCache.BlockCache _blockCache;
-        private List<TableFile> _newTableFiles = new List<TableFile>();
+        private readonly StorageLayer _layer;
+        private readonly BlockCache _blockCache;
+        private readonly List<TableFile> _newTableFiles = new List<TableFile>();
 
         private string _fileName;
         private Stream _fileStream;
@@ -31,7 +33,7 @@ namespace TrimDB.Core.Storage
         private int _itemCount;
 
 
-        public TableFileMergeWriter(StorageLayer layer, BlockCache.BlockCache blockCache)
+        public TableFileMergeWriter(StorageLayer layer, BlockCache blockCache)
         {
             _layer = layer;
             _blockCache = blockCache;
@@ -67,9 +69,9 @@ namespace TrimDB.Core.Storage
             var blockOffsetsOffset = currentLocation;
             var blockOffsetsSize = TableFileFooter.WriteBlockOffsets(_filePipe, _blockOffsets);
 
-            TableFileFooter.WriteTOC(_filePipe, new TocEntry() { EntryType = TocEntryType.Filter, Length = filterSize, Offset = filterOffset },
-                new TocEntry() { EntryType = TocEntryType.Statistics, Length = statsSize, Offset = statsOffset },
-                new TocEntry() { EntryType = TocEntryType.BlockOffsets, Length = blockOffsetsSize, Offset = blockOffsetsOffset });
+            TableFileFooter.WriteTOC(_filePipe, new TableOfContentsEntry() { EntryType = TableOfContentsEntryType.Filter, Length = filterSize, Offset = filterOffset },
+                new TableOfContentsEntry() { EntryType = TableOfContentsEntryType.Statistics, Length = statsSize, Offset = statsOffset },
+                new TableOfContentsEntry() { EntryType = TableOfContentsEntryType.BlockOffsets, Length = blockOffsetsSize, Offset = blockOffsetsOffset });
 
             await _filePipe.FlushAsync();
             await _filePipe.CompleteAsync();

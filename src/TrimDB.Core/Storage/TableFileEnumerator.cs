@@ -5,15 +5,16 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
 using TrimDB.Core.InMemory;
+using TrimDB.Core.Storage.Blocks;
 
 namespace TrimDB.Core.Storage
 {
     internal class TableFileEnumerator : IAsyncEnumerator<IMemoryItem>
     {
-        private TableFile _tableFile;
+        private readonly TableFile _tableFile;
         private int _blockNumber = -1;
         private BlockReader _blockReader;
-        private ReusableMemoryItem _memItem = new ReusableMemoryItem();
+        private readonly ReusableMemoryItem _memItem = new ReusableMemoryItem();
 
         public TableFileEnumerator(TableFile tableFile)
         {
@@ -31,7 +32,7 @@ namespace TrimDB.Core.Storage
 
         public async ValueTask<bool> MoveNextAsync()
         {
-            if (_blockReader == null)
+            if (_blockNumber == -1)
             {
                 _blockNumber++;
                 _blockReader = await _tableFile.GetKVBlock(_blockNumber);
