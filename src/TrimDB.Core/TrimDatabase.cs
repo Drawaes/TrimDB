@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 using TrimDB.Core.Hashing;
 using TrimDB.Core.InMemory;
 using TrimDB.Core.Storage;
+using TrimDB.Core.Storage.Blocks;
+using TrimDB.Core.Storage.Layers;
 
 namespace TrimDB.Core
 {
@@ -20,9 +22,11 @@ namespace TrimDB.Core
         private readonly SemaphoreSlim _skipListLock = new SemaphoreSlim(1);
         private readonly string _databaseFolder;
         private readonly IOScheduler _ioScheduler;
+        private readonly BlockCache _blockCache;
 
         public TrimDatabase(Func<MemoryTable> inMemoryFunc, int levels, string databaseFolder)
         {
+            _blockCache = new BlockCache();
             if (!System.IO.Directory.Exists(databaseFolder))
             {
                 System.IO.Directory.CreateDirectory(databaseFolder);
@@ -31,17 +35,19 @@ namespace TrimDB.Core
             _databaseFolder = databaseFolder;
             _inMemoryFunc = inMemoryFunc;
 
-            var unsorted = new UnsortedStorageLayer(1, _databaseFolder);
+            var unsorted = new UnsortedStorageLayer(1, _databaseFolder, _blockCache);
             _ioScheduler = new IOScheduler(1, unsorted, this);
             _storageLayers.Add(unsorted);
             for (var i = 2; i <= levels; i++)
             {
-                _storageLayers.Add(new SortedStorageLayer(i, _databaseFolder));
+                _storageLayers.Add(new SortedStorageLayer(i, _databaseFolder, _blockCache));
             }
             _skipList = _inMemoryFunc();
         }
 
         internal List<StorageLayer> StorageLayers => _storageLayers;
+
+        public BlockCache BlockCache => _blockCache;
 
         public ValueTask<ReadOnlyMemory<byte>> GetAsync(ReadOnlySpan<byte> key)
         {
@@ -75,7 +81,7 @@ namespace TrimDB.Core
 
             var copiedMemory = MemoryPool<byte>.Shared.Rent(key.Length);
             key.CopyTo(copiedMemory.Memory.Span);
-            return GetAsyncInternal(copiedMemory.Memory.Slice(0,key.Length));
+            return GetAsyncInternal(copiedMemory.Memory.Slice(0, key.Length));
         }
 
         internal void RemoveMemoryTable(MemoryTable sl)

@@ -2,4 +2,7 @@
   <ItemGroup>
     <PackageReference Include="System.IO.Pipelines" />
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Storage\MemoryMappedIO\" />
+  </ItemGroup>
 </Project>

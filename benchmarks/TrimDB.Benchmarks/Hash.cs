@@ -10,13 +10,16 @@ namespace TrimDB.Benchmarks
 {
     public class Hash
     {
-        public const int BlockSize = 4 << 10;
-        public byte[] _data = new byte[BlockSize];
+        public byte[] _data;
+        private static Random rand = new Random(7722);
+
+        [Params(10, 20, 100, 200, 1000)]
+        public int BlockSize { get; set; }
 
         [GlobalSetup]
         public void GlobalSetup()
         {
-            var rand = new Random();
+            _data = new byte[BlockSize];
             rand.NextBytes(_data);
         }
 
@@ -25,20 +28,6 @@ namespace TrimDB.Benchmarks
         {
             var hash = new MurmurHash3();
             hash.ComputeHash64(_data);
-        }
-
-        [Benchmark]
-        public void Murmur32()
-        {
-            var hash = new MurmurHash3();
-            hash.ComputeHash32(_data);
-        }
-
-        [Benchmark]
-        public void Murmur128()
-        {
-            var hash = new MurmurHash3();
-            hash.ComputeHash128(_data);
         }
 
         [Benchmark]
@@ -53,10 +42,5 @@ namespace TrimDB.Benchmarks
             xxHash64.ComputeHash(_data);
         }
 
-        [Benchmark]
-        public void XXHash32()
-        {
-            xxHash32.ComputeHash(_data);
-        }
     }
 }
