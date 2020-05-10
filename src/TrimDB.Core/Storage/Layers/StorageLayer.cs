@@ -3,22 +3,24 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using TrimDB.Core.Storage.Blocks;
 
-namespace TrimDB.Core.Storage
+namespace TrimDB.Core.Storage.Layers
 {
     public abstract class StorageLayer
     {
-        private string _databaseFolder;
-        private int _level;
+        private readonly string _databaseFolder;
+        private readonly int _level;
         protected TableFile[] _tableFiles;
         protected int[] _tableFileIndices;
         private int _maxFileIndex = -1;
+        private readonly BlockCache _blockCache;
 
-
-        public StorageLayer(string databaseFolder, int level)
+        public StorageLayer(string databaseFolder, int level, BlockCache blockCache)
         {
             _databaseFolder = databaseFolder;
             _level = level;
+            _blockCache = blockCache;
 
             var levelFiles = System.IO.Directory.GetFiles(_databaseFolder, "Level???_*.trim");
 
@@ -29,12 +31,12 @@ namespace TrimDB.Core.Storage
             {
                 for (var i = 0; i < _tableFiles.Length; i++)
                 {
-                    var table = new TableFile(levelFiles[i]);
-                    if (table.Level != level)
+                    var table = new TableFile(levelFiles[i], _blockCache);
+                    if (table.FileId.Level != level)
                     {
                         throw new InvalidOperationException();
                     }
-                    _tableFileIndices[i] = table.Index;
+                    _tableFileIndices[i] = table.FileId.FileId;
                     _tableFiles[i] = table;
                 }
 
@@ -44,7 +46,7 @@ namespace TrimDB.Core.Storage
         }
 
         public abstract int MaxFilesAtLayer { get; }
-        public abstract int MaxSizeAtLayer { get; }
+        public abstract int MaxFileSize { get; }
         public abstract int NumberOfTables { get; }
         public int Level => _level;
 
@@ -95,6 +97,34 @@ namespace TrimDB.Core.Storage
                     return;
                 }
             }
+        }
+
+        internal void AddAndRemoveTableFiles(List<TableFile> newTableFiles, List<TableFile> overlapped)
+        {
+            while (true)
+            {
+                var tfs = _tableFiles;
+                var newLength = newTableFiles.Count + tfs.Length - (overlapped.Count - 1);
+
+                var newTable = new TableFile[newLength];
+                var tfCounter = 0;
+                for (var i = 0; i < newTable.Length - newTableFiles.Count; i++)
+                {
+                    while (overlapped.Contains(tfs[tfCounter]))
+                    {
+                        tfCounter++;
+                    }
+                    newTable[i] = tfs[tfCounter];
+                    tfCounter++;
+                }
+
+                newTableFiles.CopyTo(newTable, newTable.Length - newTableFiles.Count);
+                if (Interlocked.CompareExchange(ref _tableFiles, newTable, tfs) == tfs)
+                {
+                    return;
+                }
+            }
+
         }
     }
 }

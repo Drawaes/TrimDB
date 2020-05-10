@@ -7,15 +7,6 @@ namespace TrimDB.Core.Hashing
 {
     public interface IHashFunction
     {
-        /// <summary>
-        /// Computes the 32-bit hash for the <seealso cref="ReadOnlySpan{T}"/>
-        /// </summary>
-        byte[] ComputeHash128(in ReadOnlySpan<byte> buffer);
-
-        /// <summary>
-        /// Computes the 128-bit hash for the <seealso cref="ReadOnlySpan{T}"/>
-        /// </summary>
-        uint ComputeHash32(in ReadOnlySpan<byte> buffer);
 
         ulong ComputeHash64(in ReadOnlySpan<byte> buffer);
     }

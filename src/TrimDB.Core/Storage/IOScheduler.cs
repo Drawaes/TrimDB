@@ -1,12 +1,14 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using TrimDB.Core.InMemory;
+using TrimDB.Core.Storage.Layers;
 
 namespace TrimDB.Core.Storage
 {
@@ -18,8 +20,8 @@ namespace TrimDB.Core.Storage
         private readonly Task _mergeTask;
         private readonly UnsortedStorageLayer _storageLayer;
         private readonly TrimDatabase _database;
-        private Func<StorageLayer, bool> _sortedStrategy;
-        private Func<StorageLayer, bool> _unsortedStrategy;
+        private readonly Func<StorageLayer, bool> _sortedStrategy;
+        private readonly Func<StorageLayer, bool> _unsortedStrategy;
 
         public IOScheduler(int maxSkiplistBacklog, UnsortedStorageLayer storageLayer, TrimDatabase database)
         {
@@ -46,26 +48,26 @@ namespace TrimDB.Core.Storage
         {
             while (!_token.IsCancellationRequested)
             {
-                foreach (var sl in _database.StorageLayers)
-                {
-                    switch (sl)
-                    {
-                        case SortedStorageLayer sortedLayer:
-                            if (_sortedStrategy(sortedLayer))
-                            {
-                                throw new NotImplementedException("We should merge here");
-                            }
-                            break;
-                        case UnsortedStorageLayer unsorted:
-                            if (_unsortedStrategy(unsorted))
-                            {
-                                await MergeUnsortedLayer(unsorted);
-                            }
-                            break;
-                        default:
-                            throw new InvalidOperationException("We have a type of storage layer we don't know what to do with");
-                    }
-                }
+                //foreach (var sl in _database.StorageLayers)
+                //{
+                //    switch (sl)
+                //    {
+                //        case SortedStorageLayer sortedLayer:
+                //            if (_sortedStrategy(sortedLayer))
+                //            {
+                //                throw new NotImplementedException("We should merge here");
+                //            }
+                //            break;
+                //        case UnsortedStorageLayer unsorted:
+                //            if (_unsortedStrategy(unsorted))
+                //            {
+                //                await MergeUnsortedLayer(unsorted);
+                //            }
+                //            break;
+                //        default:
+                //            throw new InvalidOperationException("We have a type of storage layer we don't know what to do with");
+                //    }
+                //}
 
                 await Task.Delay(TimeSpan.FromMilliseconds(100), _token.Token);
             }
@@ -78,32 +80,64 @@ namespace TrimDB.Core.Storage
 
             var nextLayer = _database.StorageLayers[unsortedLayer.Level];
 
+            var tables = unsortedLayer.GetTables();
+            var oldestTable = tables[0];
+
             // We maybe able to push a file straight down look for exclusive ranges
-            if (nextLayer.NumberOfTables < nextLayer.MaxFilesAtLayer)
+            //if (nextLayer.NumberOfTables < nextLayer.MaxFilesAtLayer)
+            //{
+            //    if (DoesTableFitWithNoOverlap(oldestTable, nextLayer))
+            //    {
+            //        // Candidate for merging
+            //        var newFilename = nextLayer.GetNextFileName();
+            //        var oldFileName = oldestTable.FileName;
+            //        await oldestTable.LoadToMemory();
+            //        System.IO.File.Move(oldFileName, newFilename);
+            //        var newTable = new TableFile(newFilename, _database.BlockCache);
+            //        await newTable.LoadAsync();
+            //        nextLayer.AddTableFile(newTable);
+            //        unsortedLayer.RemoveTable(oldestTable);
+            //        oldestTable.Dispose();
+            //        return;
+            //    }
+            //}
+
+            // Get all of the overlapping tables
+            var overlapped = GetOverlappingTables(oldestTable, nextLayer);
+            overlapped.Add(oldestTable);
+
+            var merger = new TableFileMerger(overlapped.Select(ol => ol.GetAsyncEnumerator()).ToArray());
+            // Begin writing out to disk
+            var writer = new TableFileMergeWriter(nextLayer, _database.BlockCache);
+            await writer.WriteFromMerger(merger);
+
+            nextLayer.AddAndRemoveTableFiles(writer.NewTableFiles, overlapped);
+            unsortedLayer.RemoveTable(oldestTable);
+
+            foreach (var file in overlapped)
             {
-                var tables = unsortedLayer.GetTables();
-
-                foreach (var table in tables)
-                {
-                    if (DoesTableFitWithNoOverlap(table, nextLayer))
-                    {
-                        // Candidate for merging
-                        var newFilename = nextLayer.GetNextFileName();
-                        var oldFileName = table.FileName;
-                        await table.LoadToMemory();
-                        System.IO.File.Move(oldFileName, newFilename);
-                        var newTable = new TableFile(newFilename);
-                        await newTable.LoadAsync();
-                        nextLayer.AddTableFile(newTable);
-                        unsortedLayer.RemoveTable(table);
-                        table.Dispose();
-                        return;
-                    }
-                }
+                file.Dispose();
+                System.IO.File.Delete(file.FileName);
             }
+        }
 
-            //We need to actually merge
-            throw new NotImplementedException();
+        private List<TableFile> GetOverlappingTables(TableFile table, StorageLayer nextLayer)
+        {
+            var tablesBelow = nextLayer.GetTables();
+            var firstKey = table.FirstKey.Span;
+            var lastKey = table.FirstKey.Span;
+
+            var overlapped = new List<TableFile>();
+
+            foreach (var lowerTable in tablesBelow)
+            {
+                var compare = firstKey.SequenceCompareTo(lowerTable.LastKey.Span);
+                if (compare > 0) continue;
+                compare = lastKey.SequenceCompareTo(lowerTable.FirstKey.Span);
+                if (compare < 0) continue;
+                overlapped.Add(lowerTable);
+            }
+            return overlapped;
         }
 
         private bool DoesTableFitWithNoOverlap(TableFile table, StorageLayer nextLayer)
@@ -135,7 +169,7 @@ namespace TrimDB.Core.Storage
                     var nextFilename = _storageLayer.GetNextFileName();
                     var fileWriter = new TableFileWriter(nextFilename);
                     await fileWriter.SaveMemoryTable(sl);
-                    var tableFile = new TableFile(fileWriter.FileName);
+                    var tableFile = new TableFile(fileWriter.FileName, _database.BlockCache);
                     await tableFile.LoadAsync();
                     _storageLayer.AddTableFile(tableFile);
                     _database.RemoveMemoryTable(sl);
@@ -144,8 +178,6 @@ namespace TrimDB.Core.Storage
                 {
                     Console.WriteLine("Error " + ex);
                 }
-                //TODO : Remove the memory table from the database
-
             }
         }
     }

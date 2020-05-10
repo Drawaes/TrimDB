@@ -1,49 +1,58 @@
 ﻿using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.IO;
 using System.Text;
 
-namespace TrimDB.Core.Storage
+namespace TrimDB.Core.Storage.Blocks
 {
-    public class BlockReader
+    public class BlockReader : IDisposable
     {
-        private ReadOnlyMemory<byte> _blockData;
+        private readonly IMemoryOwner<byte> _owner;
+        private readonly ReadOnlyMemory<byte> _blockData;
         private long _location;
         private long _valueLocation;
         private int _valueLength;
+        private int _keyLength;
+        private int _keyLocation;
 
-        public BlockReader(ReadOnlyMemory<byte> blockData)
+        public BlockReader(IMemoryOwner<byte> owner)
         {
-            _blockData = blockData;
+            _owner = owner;
+            _blockData = owner.Memory;
+        }
+
+        public ReadOnlySpan<byte> GetCurrentKey()
+        {
+            var span = _blockData.Span.Slice(_keyLocation, _keyLength);
+            return span;
         }
 
         public bool TryGetNextKey(out ReadOnlySpan<byte> key)
         {
             var span = _blockData.Span.Slice((int)_location);
-            if (span.Length < sizeof(long))
+            if (span.Length < sizeof(int) * 2)
             {
                 key = default;
                 return false;
             }
 
-            var sizeOfKV = BinaryPrimitives.ReadInt64LittleEndian(span);
-            if (sizeOfKV == 0)
+            _keyLength = BinaryPrimitives.ReadInt32LittleEndian(span);
+            if (_keyLength == 0)
             {
                 key = default;
                 return false;
             }
-
-            span = span[sizeof(long)..(int)sizeOfKV];
-
-            var keylength = BinaryPrimitives.ReadInt32LittleEndian(span);
             span = span.Slice(sizeof(int));
+            _keyLocation = (int)_location + sizeof(int);
+            key = span.Slice(0, _keyLength);
+            span = span.Slice(_keyLength);
 
-            _valueLength = span.Length - keylength;
-            _valueLocation = _location + sizeof(long) + sizeof(int) + keylength;
-            _location += sizeOfKV;
+            _valueLength = BinaryPrimitives.ReadInt32LittleEndian(span);
+            _valueLocation = _keyLocation + _keyLength + sizeof(int);
 
-            key = span.Slice(0, keylength);
+            _location = _valueLocation + _valueLength;
+
             return true;
         }
 
@@ -82,6 +91,8 @@ namespace TrimDB.Core.Storage
 
             return KeySearchResult.After;
         }
+
+        public void Dispose() => _owner.Dispose();
 
         public enum KeySearchResult
         {
