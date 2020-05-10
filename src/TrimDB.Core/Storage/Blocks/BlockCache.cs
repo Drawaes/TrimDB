@@ -11,9 +11,9 @@ namespace TrimDB.Core.Storage.Blocks
     {
         private readonly ConcurrentDictionary<FileIdentifier, BlockCacheFile> _cache = new ConcurrentDictionary<FileIdentifier, BlockCacheFile>();
 
-        public void RegisterFile(string fileName, FileIdentifier id)
+        public void RegisterFile(string fileName, int blockCount, FileIdentifier id)
         {
-            var file = new BlockCacheFile(fileName, id, this);
+            var file = new BlockCacheFile(fileName, blockCount, id, this);
             _cache.TryAdd(id, file);
         }
 

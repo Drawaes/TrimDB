@@ -9,7 +9,6 @@ namespace TrimDB.Core.InMemory.SkipList64
     public class SkipListEnumerator64 : IEnumerator<IMemoryItem>
     {
         private readonly SkipListAllocator64 _allocator;
-        private readonly SkipListItem64 _item;
         private long _currentLocation;
 
         internal SkipListEnumerator64(SkipListAllocator64 allocator)

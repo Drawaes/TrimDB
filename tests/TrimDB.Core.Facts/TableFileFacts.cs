@@ -20,7 +20,7 @@ namespace TrimDB.Core.Facts
             using var allocator = new NativeAllocator32(4096 * 10_000, 25);
             var memoryTable = new SkipList32(allocator);
 
-            var loadedWords = await System.IO.File.ReadAllLinesAsync("words.txt");
+            var loadedWords = CommonData.Words;
             foreach (var word in loadedWords)
             {
                 if (string.IsNullOrEmpty(word)) continue;

@@ -17,13 +17,15 @@ namespace TrimDB.Core.Storage.Blocks
         private readonly FileIdentifier _fileId;
         private readonly BlockCache _parentCache;
         private int _numberOfRefs;
+        private readonly int _blockCount;
 
-        public unsafe BlockCacheFile(string fileName, FileIdentifier fileId, BlockCache parentCache)
+        public unsafe BlockCacheFile(string fileName, int blockCount, FileIdentifier fileId, BlockCache parentCache)
         {
+            _blockCount = blockCount;
             _fileId = fileId;
             _parentCache = parentCache;
             _fileName = fileName;
-            _mappedFile = MemoryMappedFile.CreateFromFile(fileName);
+            _mappedFile = MemoryMappedFile.CreateFromFile(_fileName);
 
             _mappedView = _mappedFile.CreateViewAccessor();
             byte* ptr = null;
@@ -33,6 +35,8 @@ namespace TrimDB.Core.Storage.Blocks
 
         internal ValueTask<IMemoryOwner<byte>> GetBlockAsync(int blockId)
         {
+            if (blockId >= _blockCount) throw new ArgumentOutOfRangeException($"You requested a block of {blockId} but the block count is only {_blockCount}");
+
             Interlocked.Increment(ref _numberOfRefs);
             var mem = new BlockCacheMemory(_parentCache, _fileId, blockId, _ptr);
             return new ValueTask<IMemoryOwner<byte>>(mem);

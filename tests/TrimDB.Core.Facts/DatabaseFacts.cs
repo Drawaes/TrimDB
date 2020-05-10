@@ -12,7 +12,7 @@ namespace TrimDB.Core.Facts
         [Fact]
         public async Task TestSkipListOverflow()
         {
-            var loadedWords = await System.IO.File.ReadAllLinesAsync("words.txt");
+            var loadedWords = CommonData.Words;
             var folder = "c:\\code\\trimdb\\Database";
             foreach (var f in System.IO.Directory.GetFiles(folder))
             {

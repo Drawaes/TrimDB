@@ -130,7 +130,6 @@ namespace TrimDB.Core
             }
         }
 
-        // TODO : Solve the overwriting the old skip list if its not on disk yet
         private async Task SwitchInMemoryTable(MemoryTable sl)
         {
             await _skipListLock.WaitAsync();
