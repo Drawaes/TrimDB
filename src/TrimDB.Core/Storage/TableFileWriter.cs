@@ -23,13 +23,11 @@ namespace TrimDB.Core.Storage
         private readonly string _fileName;
         private uint _crc;
 
-        private readonly List<long> _blockOffsets = new List<long>();
-        private readonly Filter _currentFilter = new XorFilter();
-        private ReadOnlyMemory<byte> _lastKey;
-        private ReadOnlyMemory<byte> _firstKey;
+        private TableMetaData _metaData;
 
         public TableFileWriter(string fileName)
         {
+            _metaData = new TableMetaData();
             _fileName = fileName;
         }
 
@@ -41,45 +39,39 @@ namespace TrimDB.Core.Storage
             var pipeWriter = PipeWriter.Create(fs);
 
             var iterator = skipList.GetEnumerator();
-
-
             var itemCount = 0;
 
             WriteBlocks(pipeWriter, iterator, ref itemCount);
             await pipeWriter.FlushAsync();
 
-            WriteTOC(pipeWriter, _firstKey.Span, _lastKey.Span, itemCount);
-
+            WriteTOC(pipeWriter, _metaData.FirstKey.Span, _metaData.LastKey.Span, itemCount);
             await pipeWriter.FlushAsync();
 
             await pipeWriter.CompleteAsync();
-
         }
 
         private void WriteTOC(PipeWriter pipeWriter, ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, int count)
         {
-            var currentLocation = _blockOffsets.Count * FileConsts.PageSize;
+            var currentLocation = _metaData.BlockCount * FileConsts.PageSize;
 
-            var filterOffset = currentLocation;
-            var filterSize = _currentFilter.WriteToPipe(pipeWriter);
-
+            var filterSize = _metaData.Filter.WriteToPipe(pipeWriter);
+            _metaData.AddTableEntry(currentLocation, filterSize, TableOfContentsEntryType.Filter);
             currentLocation += filterSize;
 
-            var statsOffset = currentLocation;
-            var statsSize = TableFileFooter.WriteStats(pipeWriter, firstKey, lastKey, count);
+            _metaData.Count = count;
+            var statsSize = _metaData.WriteStats(pipeWriter);
+            _metaData.AddTableEntry(currentLocation, statsSize, TableOfContentsEntryType.Statistics);
             currentLocation += statsSize;
 
-            var blockOffsetsOffset = currentLocation;
-            var blockOffsetsSize = TableFileFooter.WriteBlockOffsets(pipeWriter, _blockOffsets);
+            var blockOffsetsSize = _metaData.WriteBlockOffsets(pipeWriter);
+            _metaData.AddTableEntry(currentLocation, blockOffsetsSize, TableOfContentsEntryType.BlockOffsets);
 
-            TableFileFooter.WriteTOC(pipeWriter, new TableOfContentsEntry() { EntryType = TableOfContentsEntryType.Filter, Length = filterSize, Offset = filterOffset },
-                new TableOfContentsEntry() { EntryType = TableOfContentsEntryType.Statistics, Length = statsSize, Offset = statsOffset },
-                new TableOfContentsEntry() { EntryType = TableOfContentsEntryType.BlockOffsets, Length = blockOffsetsSize, Offset = blockOffsetsOffset });
+            _metaData.WriteTOC(pipeWriter);
         }
 
         private void WriteBlocks(PipeWriter pipeWriter, IEnumerator<IMemoryItem> iterator, ref int counter)
         {
-            using var blockWriter = new BlockWriter(iterator, _currentFilter);
+            using var blockWriter = new BlockWriter(iterator, _metaData.Filter);
 
             while (blockWriter.MoreToWrite)
             {
@@ -87,12 +79,12 @@ namespace TrimDB.Core.Storage
                 span = span[..FileConsts.PageSize];
                 blockWriter.WriteBlock(span);
                 pipeWriter.Advance(FileConsts.PageSize);
-                _blockOffsets.Add(_blockOffsets.Count * FileConsts.PageSize);
+                _metaData.AddBlockOffset(_metaData.BlockCount * FileConsts.PageSize);
 
             }
             counter = blockWriter.Count;
-            _firstKey = blockWriter.FirstKey;
-            _lastKey = blockWriter.LastKey;
+            _metaData.FirstKey = blockWriter.FirstKey;
+            _metaData.LastKey = blockWriter.LastKey;
         }
 
         // TODO: Complete CRC Check

@@ -34,7 +34,7 @@ namespace TrimDB.Core.Storage
         {
             if (_blockNumber == -1)
             {
-                _blockNumber++;
+                _blockNumber = 0;
                 _blockReader = await _tableFile.GetKVBlock(_blockNumber);
             }
 
@@ -45,12 +45,20 @@ namespace TrimDB.Core.Storage
             }
 
             _blockNumber++;
+            if (_blockNumber >= _tableFile.BlockCount) return false;
+
             _blockReader?.Dispose();
             _blockReader = await _tableFile.GetKVBlock(_blockNumber);
             if (_blockReader == null)
             {
                 return false;
             }
+
+            if (!_blockReader.TryGetNextKey(out _))
+            {
+                return false;
+            }
+
             _memItem.CurrentBlock = _blockReader;
             return true;
         }
