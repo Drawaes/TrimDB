@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using TrimDB.Core.InMemory.SkipList32;
+using TrimDB.Core.Storage.Blocks.MemoryMappedCache;
 using Xunit;
 
 namespace TrimDB.Core.Facts
@@ -19,7 +20,8 @@ namespace TrimDB.Core.Facts
                 System.IO.File.Delete(f);
             }
 
-            var db = new TrimDatabase(() => new SkipList32(new NativeAllocator32(4096 * 1024, 25)), 2, folder);
+            using var blocks = new MMapBlockCache();
+            var db = new TrimDatabase(() => new SkipList32(new NativeAllocator32(4096 * 1024, 25)), blocks,  2, folder);
 
             foreach (var word in loadedWords)
             {
@@ -30,8 +32,6 @@ namespace TrimDB.Core.Facts
 
             var key = Encoding.UTF8.GetBytes(loadedWords[0]);
             var expectedValue = Encoding.UTF8.GetBytes($"VALUE={loadedWords[0]}");
-
-            //await Task.Delay(TimeSpan.FromSeconds(10));
 
             var result = await db.GetAsync(key);
 

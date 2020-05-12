@@ -24,9 +24,9 @@ namespace TrimDB.Core
         private readonly IOScheduler _ioScheduler;
         private readonly BlockCache _blockCache;
 
-        public TrimDatabase(Func<MemoryTable> inMemoryFunc, int levels, string databaseFolder)
+        public TrimDatabase(Func<MemoryTable> inMemoryFunc, BlockCache blockCache, int levels, string databaseFolder)
         {
-            _blockCache = new BlockCache();
+            _blockCache = blockCache;
             if (!System.IO.Directory.Exists(databaseFolder))
             {
                 System.IO.Directory.CreateDirectory(databaseFolder);
