@@ -16,7 +16,7 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
     {
         private string _fileName;
         private FileIdentifier _id;
-        private AsyncBlockManager[] _blocks;
+        private AsyncBlockManager?[] _blocks;
         private SafeFileHandle _fileHandle;
         private AsyncBlockCache _cache;
         private CompletionPorts.CompletionPortSafeHandle _cpHandle;
@@ -45,6 +45,8 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
             }
         }
 
+        internal void RemoveBlock(int blockId) => _blocks[blockId] = null;
+
         internal ValueTask<IMemoryOwner<byte>> GetBlockAsync(AsyncBlockManager block)
         {
             if (block.Task.IsCompletedSuccessfully)
@@ -60,6 +62,7 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
                 return block.GetMemoryManager();
             }
         }
+        internal AsyncBlockAllocator Allocator => _cache.Allocator;
 
         internal unsafe ValueTask<IMemoryOwner<byte>> GetBlockAsync(int blockId)
         {
@@ -71,7 +74,7 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
                     return GetBlockAsync(currentBlock);
                 }
 
-                var newBlock = new AsyncBlockManager();
+                var newBlock = new AsyncBlockManager(this);
 
                 if (Interlocked.CompareExchange(ref _blocks[blockId], newBlock, currentBlock) != currentBlock)
                 {

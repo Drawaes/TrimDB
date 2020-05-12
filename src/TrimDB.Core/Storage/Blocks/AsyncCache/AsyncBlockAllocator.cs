@@ -11,6 +11,7 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
     {
         private byte[] _slab;
         private ConcurrentQueue<int> _availableOffsets = new ConcurrentQueue<int>();
+        private ConcurrentQueue<AsyncBlockManager> _ableToFree = new ConcurrentQueue<AsyncBlockManager>();
         private int _blockSize;
         private GCHandle _handle;
 
@@ -30,25 +31,37 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
 
         public override IMemoryOwner<byte> Rent(int minBufferSize = -1)
         {
-            if (!_availableOffsets.TryDequeue(out var offset))
+            int offset;
+            while (true)
             {
-                throw new NotImplementedException("We haven't implemented creating new slabs");
+                if (!_availableOffsets.TryDequeue(out offset))
+                {
+
+                    while (_ableToFree.TryDequeue(out var freeCandidate))
+                    {
+                        if (freeCandidate.TryToFree())
+                        {
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    break;
+                }
             }
+            //TODO ADD SOME KIND OF SPIN WAIT, WAIT AND ALSO EXPANSION OF MEMORY
 
             return new AsyncBlockManagedMemory(this, offset, _blockSize);
         }
 
-        protected override void Dispose(bool disposing)
-        {
-            _handle.Free();
-        }
+        internal void AddFreeCandidate(AsyncBlockManager blockManager) => _ableToFree.Enqueue(blockManager);
+
+        protected override void Dispose(bool disposing) => _handle.Free();
 
         private void Return(int offset) => _availableOffsets.Enqueue(offset);
 
-        private unsafe void* GetPointer(int offset, int elementId)
-        {
-            return (void*)IntPtr.Add(_handle.AddrOfPinnedObject(), offset + elementId);
-        }
+        private unsafe void* GetPointer(int offset, int elementId) => (void*)IntPtr.Add(_handle.AddrOfPinnedObject(), offset + elementId);
 
         private class AsyncBlockManagedMemory : MemoryManager<byte>
         {

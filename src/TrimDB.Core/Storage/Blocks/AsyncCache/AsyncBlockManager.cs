@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using TrimDB.Core.Interop.Windows;
 
 namespace TrimDB.Core.Storage.Blocks.AsyncCache
 {
@@ -11,9 +12,14 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
     {
         private TaskCompletionSource<bool> _taskSource = new TaskCompletionSource<bool>();
         private int _refCount;
+        private FileIdentifier _fileId;
+        private int _blockId;
+        private AsyncBlockCacheFile _cacheFile;
 
         public IMemoryOwner<byte> BlockMemory { get; set; }
         public Task<bool> Task => _taskSource.Task;
+
+        public AsyncBlockManager(AsyncBlockCacheFile cacheFile) => _cacheFile = cacheFile;
 
         public AsyncBlockManagerRefCounter GetMemoryManager()
         {
@@ -30,7 +36,35 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
 
         public void DecrementRefCount()
         {
+            var newValue = Interlocked.Decrement(ref _refCount);
+            if (newValue == 0)
+            {
+                _cacheFile.Allocator.AddFreeCandidate(this);
+            }
+            else if (newValue == -1)
+            {
+                BlockMemory.Dispose();
+            }
+        }
+
+        public bool TryToFree()
+        {
+            if (Volatile.Read(ref _refCount) == 0)
+            {
+                _cacheFile.RemoveBlock(_blockId);
+            }
+            else
+            {
+                return false;
+            }
+
+            if (Volatile.Read(ref _refCount) == 0)
+            {
+                BlockMemory.Dispose();
+                return true;
+            }
             Interlocked.Decrement(ref _refCount);
+            return false;
         }
     }
 
