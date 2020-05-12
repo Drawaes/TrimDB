@@ -39,7 +39,7 @@ namespace TrimDB.Core.Facts
             var fw = new TableFileWriter(fileName);
             await fw.SaveMemoryTable(memoryTable);
 
-            using (var blockCache = new AsyncBlockCache())
+            using (var blockCache = new AsyncBlockCache(10000))
             {
                 var loadedTable = new TableFile(fileName, blockCache);
                 await loadedTable.LoadAsync();
@@ -55,8 +55,8 @@ namespace TrimDB.Core.Facts
                     var result = await loadedTable.GetAsync(utf8, h);
                     var resultAsString = Encoding.UTF8.GetString(result.Value.Span);
 
-                    //result.Result.Should().Be(SearchResult.Found);
-                    //resultAsString.Should().EndWith(word);
+                    result.Result.Should().Be(SearchResult.Found);
+                    resultAsString.Should().EndWith(word);
                 }
             }
         }

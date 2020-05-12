@@ -11,7 +11,6 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
     {
         private byte[] _slab;
         private ConcurrentQueue<int> _availableOffsets = new ConcurrentQueue<int>();
-        private ConcurrentQueue<AsyncBlockManager> _ableToFree = new ConcurrentQueue<AsyncBlockManager>();
         private int _blockSize;
         private GCHandle _handle;
 
@@ -37,13 +36,7 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
                 if (!_availableOffsets.TryDequeue(out offset))
                 {
 
-                    while (_ableToFree.TryDequeue(out var freeCandidate))
-                    {
-                        if (freeCandidate.TryToFree())
-                        {
-                            break;
-                        }
-                    }
+                    throw new NotImplementedException();
                 }
                 else
                 {
@@ -54,8 +47,6 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
 
             return new AsyncBlockManagedMemory(this, offset, _blockSize);
         }
-
-        internal void AddFreeCandidate(AsyncBlockManager blockManager) => _ableToFree.Enqueue(blockManager);
 
         protected override void Dispose(bool disposing) => _handle.Free();
 

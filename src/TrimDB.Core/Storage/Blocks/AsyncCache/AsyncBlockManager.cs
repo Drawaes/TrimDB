@@ -37,34 +37,6 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
         public void DecrementRefCount()
         {
             var newValue = Interlocked.Decrement(ref _refCount);
-            if (newValue == 0)
-            {
-                _cacheFile.Allocator.AddFreeCandidate(this);
-            }
-            else if (newValue == -1)
-            {
-                BlockMemory.Dispose();
-            }
-        }
-
-        public bool TryToFree()
-        {
-            if (Volatile.Read(ref _refCount) == 0)
-            {
-                _cacheFile.RemoveBlock(_blockId);
-            }
-            else
-            {
-                return false;
-            }
-
-            if (Volatile.Read(ref _refCount) == 0)
-            {
-                BlockMemory.Dispose();
-                return true;
-            }
-            Interlocked.Decrement(ref _refCount);
-            return false;
         }
     }
 

@@ -14,12 +14,13 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
     public class AsyncBlockCache : BlockCache
     {
         private ConcurrentDictionary<FileIdentifier, AsyncBlockCacheFile> _cache = new ConcurrentDictionary<FileIdentifier, AsyncBlockCacheFile>();
-        private AsyncBlockAllocator _allocator = new AsyncBlockAllocator(200, 4096);
+        private AsyncBlockAllocator _allocator;
         private CompletionPortSafeHandle _completionPort;
         private System.Threading.Thread[] _threads = new System.Threading.Thread[Environment.ProcessorCount];
-        
-        public AsyncBlockCache()
+
+        public AsyncBlockCache(int blockCount)
         {
+            _allocator = new AsyncBlockAllocator(blockCount, FileConsts.PageSize);
             _completionPort = CreateIoCompletionPort((IntPtr)(-1), IntPtr.Zero, UIntPtr.Zero, (uint)_threads.Length);
             if (_completionPort.IsInvalid)
             {
@@ -94,6 +95,7 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
                 file.Dispose();
             }
             _completionPort.Dispose();
+            _allocator.Dispose();
         }
     }
 }
