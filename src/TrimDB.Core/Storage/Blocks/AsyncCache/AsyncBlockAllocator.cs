@@ -43,10 +43,7 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
             _handle.Free();
         }
 
-        private void Return(int offset)
-        {
-            _availableOffsets.Enqueue(offset);
-        }
+        private void Return(int offset) => _availableOffsets.Enqueue(offset);
 
         private unsafe void* GetPointer(int offset, int elementId)
         {

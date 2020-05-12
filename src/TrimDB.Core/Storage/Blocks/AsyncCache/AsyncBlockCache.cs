@@ -45,7 +45,12 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
             {
                 if (!GetQueuedCompletionStatus(_completionPort, out var numBytesTransfered, out _, out var overlappedPtr, -1))
                 {
-                    throw new NotImplementedException("There was either an error with the completion port or an IO error to handle");
+                    var error = Marshal.GetLastWin32Error();
+                    if (error == (int)Errors.NTError.ERROR_ABANDONED_WAIT_0)
+                    {
+                        return;
+                    }
+                    throw new NotImplementedException($"There was either an error with the completion port or an IO error to handle error code {error}");
                 }
                 var overlapped = Unsafe.AsRef<Files.OverlappedStruct>((void*)overlappedPtr);
 
@@ -80,6 +85,15 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
         public override void RemoveFile(FileIdentifier id)
         {
             throw new NotImplementedException();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            foreach (var file in _cache.Values)
+            {
+                file.Dispose();
+            }
+            _completionPort.Dispose();
         }
     }
 }

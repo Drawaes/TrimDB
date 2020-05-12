@@ -11,10 +11,10 @@ namespace TrimDB.Core.Interop.Windows
         [DllImport(Libraries.Kernel32, SetLastError = true)]
         internal static extern CompletionPortSafeHandle CreateIoCompletionPort(IntPtr fileHandle, IntPtr existingCompletionPort, UIntPtr completionKey, uint NumberOfConcurrentThreads);
 
-        [DllImport(Libraries.Kernel32, SetLastError = false)]
+        [DllImport(Libraries.Kernel32, SetLastError = true)]
         internal static extern bool CloseHandle(IntPtr handle);
 
-        [DllImport(Libraries.Kernel32, SetLastError = false)]
+        [DllImport(Libraries.Kernel32, SetLastError = true)]
         internal static extern bool GetQueuedCompletionStatus(CompletionPortSafeHandle completionPort,out uint lpNumberOfBytesTransferred, out UIntPtr lpCompletionKey, out IntPtr lpOverlapped, int dwMilliseconds);
 
         public class CompletionPortSafeHandle : SafeHandle

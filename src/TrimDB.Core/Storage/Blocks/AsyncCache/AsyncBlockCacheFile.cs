@@ -12,14 +12,14 @@ using static TrimDB.Core.Interop.Windows.Files;
 
 namespace TrimDB.Core.Storage.Blocks.AsyncCache
 {
-    public class AsyncBlockCacheFile
+    public class AsyncBlockCacheFile : IDisposable
     {
         private string _fileName;
         private FileIdentifier _id;
         private AsyncBlockManager[] _blocks;
         private SafeFileHandle _fileHandle;
         private AsyncBlockCache _cache;
-        private CompletionPorts.CompletionPortSafeHandle _completionPort;
+        private CompletionPorts.CompletionPortSafeHandle _cpHandle;
 
         public AsyncBlockCacheFile(string fileName, int blockCount, FileIdentifier id, AsyncBlockCache cache)
         {
@@ -36,12 +36,28 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
                 throw new System.IO.FileLoadException($"Unable to load the file {fileName} with error code {error}");
             }
 
-            _completionPort = CompletionPorts.CreateIoCompletionPort(_fileHandle.DangerousGetHandle(), _cache.CompletionPort.DangerousGetHandle(),
+            _cpHandle = CompletionPorts.CreateIoCompletionPort(_fileHandle.DangerousGetHandle(), _cache.CompletionPort.DangerousGetHandle(),
                UIntPtr.Zero, (uint)Environment.ProcessorCount);
-            if (_completionPort.IsInvalid)
+            if (_cpHandle.IsInvalid)
             {
                 var error = Marshal.GetLastWin32Error();
                 throw new System.IO.FileLoadException($"Unable to map to the completion port for the file {fileName} with error code {error}");
+            }
+        }
+
+        internal ValueTask<IMemoryOwner<byte>> GetBlockAsync(AsyncBlockManager block)
+        {
+            if (block.Task.IsCompletedSuccessfully)
+            {
+                return new ValueTask<IMemoryOwner<byte>>(block.GetMemoryManager());
+            }
+
+            return InternalGetBlockAsync(block);
+
+            static async ValueTask<IMemoryOwner<byte>> InternalGetBlockAsync(AsyncBlockManager block)
+            {
+                await block.Task;
+                return block.GetMemoryManager();
             }
         }
 
@@ -50,10 +66,18 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
             while (true)
             {
                 var currentBlock = _blocks[blockId];
-                if (currentBlock != null) return new ValueTask<IMemoryOwner<byte>>(currentBlock.Task);
+                if (currentBlock != null)
+                {
+                    return GetBlockAsync(currentBlock);
+                }
 
-                // TODO: COMPARE EXCHANGE
                 var newBlock = new AsyncBlockManager();
+
+                if (Interlocked.CompareExchange(ref _blocks[blockId], newBlock, currentBlock) != currentBlock)
+                {
+                    continue;
+                }
+
                 _blocks[blockId] = newBlock;
 
                 newBlock.BlockMemory = _cache.Allocator.Rent(0);
@@ -72,10 +96,15 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
 
                 ReadFile(_fileHandle, newBlock.BlockMemory.Memory.Pin().Pointer, FileConsts.PageSize, out var readBytes, overLappedPointer);
 
-                return new ValueTask<IMemoryOwner<byte>>(newBlock.Task);
+                return GetBlockAsync(newBlock);
             }
         }
 
         internal void CompleteBlock(int blockId) => _blocks[blockId].CompleteSuccess();
+
+        public void Dispose()
+        {
+            _fileHandle.Dispose();
+        }
     }
 }
