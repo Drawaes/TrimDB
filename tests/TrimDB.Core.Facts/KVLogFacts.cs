@@ -22,25 +22,24 @@ namespace TrimDB.Core.Facts
             var tmpMetaFile = System.IO.Path.GetTempFileName();
             var kvLogManager = new KVLogManager(tmpLogFile, tmpMetaFile);
             var c = kvLogManager.GetChannelWriter();
+
+            var tcs = new TaskCompletionSource<long>();
             var po = new PutOperation();
-            long off = 0;
+            po.LoggingCompleted = tcs;
             po.Key = Encoding.UTF8.GetBytes("answer");
             po.Value = Encoding.UTF8.GetBytes("42");
-            po.Completed = (long voffset) =>
-            {
-                off = voffset;
-            };
 
             await c.WriteAsync(po);
 
-            while (off == 0)
-            {
-                Thread.SpinWait(10);
-            }
+            var off = await po.LoggingCompleted.Task;
 
             Assert.Equal(10, off);
 
-            await kvLogManager.RecordCommitted(10);
+            // await kvLogManager.RecordCommitted(10);
+
+            // var val = await kvLogManager.ReadValueAtLocation(10);
+            // var valStr = System.Text.Encoding.UTF8.GetString(val.ToArray(), 0, val.Length);
+           
         }
     }
 }

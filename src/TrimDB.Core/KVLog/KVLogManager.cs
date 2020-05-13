@@ -16,7 +16,7 @@ namespace TrimDB.Core.KVLog
         public Memory<byte> Key;
         public Memory<byte> Value;
         public bool Deleted;
-        public Action<long> Completed;
+        public TaskCompletionSource<long> LoggingCompleted;
     }
 
     public class KVLogManager
@@ -47,13 +47,14 @@ namespace TrimDB.Core.KVLog
         // Metadata filename - where highest 
         string _metadataFileName;
 
-        public KVLogManager(string fileName, string metadataFileName, bool waitForFlush = true, bool waitForFullBuffer = false, int bufferSize = 0) {
+        public KVLogManager(string fileName, string metadataFileName, bool waitForFlush = true, bool waitForFullBuffer = false, int bufferSize = 0)
+        {
             // open metadata file & read last committed offset
             _metadataFileName = metadataFileName;
 
             // open or create value log
             _fileName = fileName;
-            var f = new System.IO.FileInfo(_fileName);
+            var f = new FileInfo(_fileName);
             _offset = 0;
             if (f.Exists)
             {
@@ -63,7 +64,7 @@ namespace TrimDB.Core.KVLog
             // check all is ok and apply updates if not.
             CheckState();
 
-            _kvLogStream = System.IO.File.OpenWrite(_fileName);
+            _kvLogStream = File.OpenWrite(_fileName);
             _kvLogWriter = PipeWriter.Create(_kvLogStream);
 
             // create channel for Storage to write to
@@ -77,10 +78,24 @@ namespace TrimDB.Core.KVLog
             _readOperations.Start();
         }
 
-        // call this on startup to see if we need to apply some stuff
+        // call this on startup to see if we need to apply lost updates
         protected void CheckState()
         {
 
+        }
+
+        public async Task<long> LogKV(Memory<byte> key, Memory<byte> value, bool isDeleted)
+        {
+            var c = GetChannelWriter();
+            var tcs = new TaskCompletionSource<long>();
+            var po = new PutOperation();
+            po.LoggingCompleted = tcs;
+            po.Key = key;
+            po.Value = value;
+            po.Deleted = isDeleted;
+            await c.WriteAsync(po);
+            var off = await po.LoggingCompleted.Task;
+            return off;
         }
 
         // Store the put operation in the kvLog. Either return immediately or await for operation to be written to disk.
@@ -103,7 +118,9 @@ namespace TrimDB.Core.KVLog
 
                 // call back to storage
                 var valueOffset = _offset + sizeof(int) + op.Key.Length;
-                op.Completed(valueOffset);
+
+                // op.Completed(valueOffset);
+                op.LoggingCompleted.SetResult(valueOffset);
 
                 // update offset to end of value
                 _offset += valueOffset + sizeof(int) + op.Value.Length;
@@ -133,6 +150,17 @@ namespace TrimDB.Core.KVLog
             var pw = PipeWriter.Create(fs);
             WriteOffset(pw, offset);
             await pw.FlushAsync();
+        }
+
+        public async Task<Memory<byte>> ReadValueAtLocation(long offset)
+        {
+            using var fs = System.IO.File.OpenRead(_fileName);
+            var sizeBuffer = new byte[sizeof(int)];
+            await fs.ReadAsync(sizeBuffer, (int) offset, sizeof(int));
+            var valSize = BitConverter.ToInt32(sizeBuffer);
+            var valBuffer = new byte[valSize];
+            await fs.ReadAsync(valBuffer, (int)offset + sizeof(int), valSize);
+            return new Memory<byte>(valBuffer, 0, valSize);
         }
 
         private void WriteOffset(PipeWriter pipeWriter, long offset)
