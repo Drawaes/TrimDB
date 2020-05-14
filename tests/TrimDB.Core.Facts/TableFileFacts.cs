@@ -10,6 +10,7 @@ using TrimDB.Core.InMemory.SkipList32;
 using TrimDB.Core.Storage;
 using TrimDB.Core.Storage.Blocks;
 using TrimDB.Core.Storage.Blocks.AsyncCache;
+using TrimDB.Core.Storage.Blocks.CachePrototype;
 using TrimDB.Core.Storage.Blocks.MemoryMappedCache;
 using Xunit;
 
@@ -39,7 +40,7 @@ namespace TrimDB.Core.Facts
             var fw = new TableFileWriter(fileName);
             await fw.SaveMemoryTable(memoryTable);
 
-            using (var blockCache = new AsyncBlockCache(10000))
+            using (var blockCache = new ProtoBlockCache(10000))
             {
                 var loadedTable = new TableFile(fileName, blockCache);
                 await loadedTable.LoadAsync();

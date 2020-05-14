@@ -2,6 +2,7 @@
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -14,16 +15,23 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
         private int _blockSize;
         private GCHandle _handle;
 
-        public AsyncBlockAllocator(int numberOfBlocks, int blockSize)
+        public unsafe AsyncBlockAllocator(int numberOfBlocks, int blockSize)
         {
             _blockSize = blockSize;
-            _slab = new byte[blockSize * numberOfBlocks];
+            _slab = new byte[blockSize * (numberOfBlocks + 1)];
             _handle = GCHandle.Alloc(_slab, GCHandleType.Pinned);
+
+            var alignedOffset = AlignLength(_handle.AddrOfPinnedObject().ToInt64());
 
             for (var i = 0; i < numberOfBlocks; i++)
             {
-                _availableOffsets.Enqueue(i * blockSize);
+                _availableOffsets.Enqueue((i * blockSize) + alignedOffset);
             }
+        }
+
+        public unsafe static int AlignLength(long length)
+        {
+            return (int)(((length + (FileConsts.PageSize - 1)) & ~(FileConsts.PageSize - 1)) - length);
         }
 
         public override int MaxBufferSize => _blockSize;
