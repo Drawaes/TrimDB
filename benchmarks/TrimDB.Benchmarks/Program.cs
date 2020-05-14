@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Running;
 using TrimDB.Core;
@@ -16,9 +18,12 @@ namespace TrimDB.Benchmarks
         public static async Task Main(string[] args)
         {
             Console.WriteLine("Are you ready?");
-            Console.ReadLine();
-
+            
+            var sw = Stopwatch.StartNew();
+            Console.WriteLine("Started");
             await WriteAndReadAsyncBlockFile();
+
+            Console.WriteLine($"This took {sw.ElapsedMilliseconds}ms");
             //var summary = BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
         }
 
@@ -31,7 +36,7 @@ namespace TrimDB.Benchmarks
             var tempPath = System.IO.Path.GetTempPath();
             var fileName = System.IO.Path.Combine(tempPath, "Level1_1.trim");
 
-            using (var blockCache = new ProtoBlockCache(100))
+            using (var blockCache = new ProtoSharded(200))
             {
                 var loadedTable = new TableFile(fileName, blockCache);
                 await loadedTable.LoadAsync();
@@ -61,7 +66,7 @@ namespace TrimDB.Benchmarks
                 await Task.WhenAll(taskList);
             }
 
-            Console.ReadLine();
+            
         }
     }
 }

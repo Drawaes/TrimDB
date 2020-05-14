@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -14,9 +15,11 @@ namespace TrimDB.Core.Storage.Blocks.CachePrototype
         private SafeFileHandle _fileHandle;
         private string _fileName;
         private CompletionPorts.CompletionPortSafeHandle _portHandle;
+        private ConcurrentQueue<IntPtr> _overlappedStructs;
 
-        public ProtoFile(string fileName, CompletionPorts.CompletionPortSafeHandle completionPort)
+        public ProtoFile(string fileName, CompletionPorts.CompletionPortSafeHandle completionPort, ConcurrentQueue<IntPtr> overlappedStructs)
         {
+            _overlappedStructs = overlappedStructs;
             _fileName = fileName;
 
             _fileHandle = CreateFileW(fileName, FileAccess.GENERIC_READ, System.IO.FileShare.Read,
@@ -38,7 +41,11 @@ namespace TrimDB.Core.Storage.Blocks.CachePrototype
 
         public unsafe void ReadBlock(IntPtr buffer, BlockIdentifier bid)
         {
-            var overLappedPointer = Marshal.AllocHGlobal(Unsafe.SizeOf<OverlappedStruct>());
+            if (!_overlappedStructs.TryDequeue(out var overLappedPointer))
+            {
+                overLappedPointer = Marshal.AllocHGlobal(Unsafe.SizeOf<OverlappedStruct>());
+            }
+
             ref var overlapped = ref Unsafe.AsRef<OverlappedStruct>((void*)overLappedPointer);
             overlapped.hEvent = IntPtr.Zero;
             overlapped.Internal = IntPtr.Zero;
