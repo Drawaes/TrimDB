@@ -64,7 +64,7 @@ namespace TrimDB.Core.KVLog
             // check all is ok and apply updates if not.
             CheckState();
 
-            _kvLogStream = File.OpenWrite(_fileName);
+            _kvLogStream = new FileStream(_fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
             _kvLogWriter = PipeWriter.Create(_kvLogStream);
 
             // create channel for Storage to write to
@@ -148,18 +148,20 @@ namespace TrimDB.Core.KVLog
             // to calc the start pos of the next key.
             using var fs = System.IO.File.OpenWrite(_metadataFileName);
             var pw = PipeWriter.Create(fs);
-            WriteOffset(pw, offset);
+            var lastVal = await ReadValueAtLocation(offset);
+            WriteOffset(pw, offset + lastVal.Length);
             await pw.FlushAsync();
         }
 
         public async Task<Memory<byte>> ReadValueAtLocation(long offset)
         {
-            using var fs = System.IO.File.OpenRead(_fileName);
+            using var fs = new FileStream(_fileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            fs.Seek(offset, SeekOrigin.Begin);
             var sizeBuffer = new byte[sizeof(int)];
-            await fs.ReadAsync(sizeBuffer, (int) offset, sizeof(int));
+            await fs.ReadAsync(sizeBuffer, 0, sizeof(int));
             var valSize = BitConverter.ToInt32(sizeBuffer);
             var valBuffer = new byte[valSize];
-            await fs.ReadAsync(valBuffer, (int)offset + sizeof(int), valSize);
+            await fs.ReadAsync(valBuffer, 0, valSize);
             return new Memory<byte>(valBuffer, 0, valSize);
         }
 

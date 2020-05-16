@@ -21,25 +21,22 @@ namespace TrimDB.Core.Facts
             var tmpLogFile = System.IO.Path.GetTempFileName();
             var tmpMetaFile = System.IO.Path.GetTempFileName();
             var kvLogManager = new KVLogManager(tmpLogFile, tmpMetaFile);
-            var c = kvLogManager.GetChannelWriter();
+            var valOffset = await kvLogManager.LogKV(Encoding.UTF8.GetBytes("answer"), Encoding.UTF8.GetBytes("42"), false);
 
-            var tcs = new TaskCompletionSource<long>();
-            var po = new PutOperation();
-            po.LoggingCompleted = tcs;
-            po.Key = Encoding.UTF8.GetBytes("answer");
-            po.Value = Encoding.UTF8.GetBytes("42");
+            Assert.Equal(10, valOffset);
 
-            await c.WriteAsync(po);
+            await kvLogManager.RecordCommitted(valOffset);
 
-            var off = await po.LoggingCompleted.Task;
+            var val = await kvLogManager.ReadValueAtLocation(valOffset);
+            var valStr = System.Text.Encoding.UTF8.GetString(val.ToArray(), 0, val.Length);
+            Assert.Equal("42", valStr);
 
-            Assert.Equal(10, off);
+            // check state returns no operations
 
-            // await kvLogManager.RecordCommitted(10);
+            // store new kv
 
-            // var val = await kvLogManager.ReadValueAtLocation(10);
-            // var valStr = System.Text.Encoding.UTF8.GetString(val.ToArray(), 0, val.Length);
-           
+            // check state returns one operation
+
         }
     }
 }
