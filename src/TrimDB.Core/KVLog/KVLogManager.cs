@@ -19,7 +19,16 @@ namespace TrimDB.Core.KVLog
         public TaskCompletionSource<long> LoggingCompleted;
     }
 
-    public class KVLogManager
+    public abstract class KVLogManager
+    {
+        public abstract Task<bool> IsAllCommitted();
+        public abstract Task<long> LogKV(Memory<byte> key, Memory<byte> value, bool isDeleted);
+        public abstract Task RecordCommitted(long offset);
+        public abstract Task<Memory<byte>> ReadValueAtLocation(long offset);
+        public abstract IAsyncEnumerable<PutOperation> GetUncommittedOperations();
+    }
+
+    public class FileBasedKVLogManager : KVLogManager
     {
         // Indicates if writes should be awaited before returning 
         protected bool _waitForFlush;
@@ -47,7 +56,7 @@ namespace TrimDB.Core.KVLog
         // Metadata filename - where highest 
         string _metadataFileName;
 
-        public KVLogManager(string fileName, string metadataFileName, bool waitForFlush = true, bool waitForFullBuffer = false, int bufferSize = 0)
+        public FileBasedKVLogManager(string fileName, string metadataFileName, bool waitForFlush = true, bool waitForFullBuffer = false, int bufferSize = 0)
         {
             // open metadata file & read last committed offset
             _metadataFileName = metadataFileName;
@@ -62,7 +71,7 @@ namespace TrimDB.Core.KVLog
             }
 
             // check all is ok and apply updates if not.
-            CheckState();
+            // CheckState();
 
             _kvLogStream = new FileStream(_fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
             _kvLogWriter = PipeWriter.Create(_kvLogStream);
@@ -79,12 +88,13 @@ namespace TrimDB.Core.KVLog
         }
 
         // call this on startup to see if we need to apply lost updates
-        protected void CheckState()
+        public override async Task<bool> IsAllCommitted()
         {
-
+            var lastCommitted = await ReadOffset();
+            return _offset == lastCommitted;
         }
 
-        public async Task<long> LogKV(Memory<byte> key, Memory<byte> value, bool isDeleted)
+        public override async Task<long> LogKV(Memory<byte> key, Memory<byte> value, bool isDeleted)
         {
             var c = GetChannelWriter();
             var tcs = new TaskCompletionSource<long>();
@@ -123,7 +133,7 @@ namespace TrimDB.Core.KVLog
                 op.LoggingCompleted.SetResult(valueOffset);
 
                 // update offset to end of value
-                _offset += valueOffset + sizeof(int) + op.Value.Length;
+                _offset = valueOffset + sizeof(int) + op.Value.Length;
             }
         }
 
@@ -141,7 +151,7 @@ namespace TrimDB.Core.KVLog
             _kvLogWriter.Advance(kvSize);
         }
 
-        public async Task RecordCommitted(long offset)
+        public override async Task RecordCommitted(long offset)
         {
             // this is actually the offset off the start of the value.
             // so needs to read that location, get the length and then use that
@@ -149,11 +159,18 @@ namespace TrimDB.Core.KVLog
             using var fs = System.IO.File.OpenWrite(_metadataFileName);
             var pw = PipeWriter.Create(fs);
             var lastVal = await ReadValueAtLocation(offset);
-            WriteOffset(pw, offset + lastVal.Length);
+            WriteOffset(pw, offset + sizeof(int) + lastVal.Length);
             await pw.FlushAsync();
         }
 
-        public async Task<Memory<byte>> ReadValueAtLocation(long offset)
+        private void WriteOffset(PipeWriter pipeWriter, long offset)
+        {
+            var span = pipeWriter.GetSpan(sizeof(long));
+            BinaryPrimitives.WriteInt64LittleEndian(span, offset);
+            pipeWriter.Advance(sizeof(long));
+        }
+
+        public override async Task<Memory<byte>> ReadValueAtLocation(long offset)
         {
             using var fs = new FileStream(_fileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             fs.Seek(offset, SeekOrigin.Begin);
@@ -165,14 +182,55 @@ namespace TrimDB.Core.KVLog
             return new Memory<byte>(valBuffer, 0, valSize);
         }
 
-        private void WriteOffset(PipeWriter pipeWriter, long offset)
+
+        public async Task<long> ReadOffset()
         {
-            var span = pipeWriter.GetSpan(sizeof(long));
-            BinaryPrimitives.WriteInt64LittleEndian(span, offset);
-            pipeWriter.Advance(sizeof(long));
+            using var fs = System.IO.File.OpenRead(_metadataFileName);
+            var offsetBuffer = new byte[sizeof(long)];
+            await fs.ReadAsync(offsetBuffer, 0, sizeof(long));
+            var offset = BitConverter.ToInt64(offsetBuffer);
+            return offset;
         }
 
-        public ChannelWriter<PutOperation> GetChannelWriter()
+        public override async IAsyncEnumerable<PutOperation> GetUncommittedOperations()
+        {
+            using var fs = new FileStream(_fileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+
+            var committedOffset = await ReadOffset();
+            fs.Seek(committedOffset, SeekOrigin.Begin);
+
+            var sizeBuffer = new byte[sizeof(int)];
+            var keySize = 0;
+            var valSize = 0;
+            while (committedOffset < _offset)
+            {
+                // create operations
+                var putOperation = new PutOperation();
+
+                // read key
+                await fs.ReadAsync(sizeBuffer, 0, sizeof(int));
+                keySize = BitConverter.ToInt32(sizeBuffer);
+                var keyBuffer = new byte[keySize];
+                await fs.ReadAsync(keyBuffer, 0, keySize);
+
+                // read value
+                await fs.ReadAsync(sizeBuffer, 0, sizeof(int));
+                valSize = BitConverter.ToInt32(sizeBuffer);
+                var valBuffer = new byte[valSize];
+                await fs.ReadAsync(valBuffer, 0, valSize);
+
+                // forward offset
+                committedOffset += sizeof(int) + sizeof(int) + keySize + valSize;
+
+                putOperation.Key = keyBuffer;
+                putOperation.Value = valBuffer;
+
+                // yield
+                yield return putOperation;
+            }
+        }
+
+        private ChannelWriter<PutOperation> GetChannelWriter()
         {
             return _channel.Writer;
         }
