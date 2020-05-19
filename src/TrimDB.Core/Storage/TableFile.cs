@@ -100,6 +100,10 @@ namespace TrimDB.Core.Storage
                 var result = block.TryFindKey(key.Span);
                 if (result == BlockReader.KeySearchResult.Found)
                 {
+                    if(block.IsDeleted)
+                    {
+                        return new SearchResultValue() { Result = SearchResult.Deleted, Value = default };
+                    }
                     return new SearchResultValue() { Result = SearchResult.Found, Value = block.GetCurrentValue().ToArray() };
                 }
                 if (result == BlockReader.KeySearchResult.Before)

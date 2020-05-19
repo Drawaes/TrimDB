@@ -20,11 +20,7 @@ namespace TrimDB.Core.Storage.Blocks
         {
             _filter = filter;
             _iterator = iterator;
-            if (!_iterator.MoveNext())
-            {
-                throw new NotImplementedException("No items to save");
-            }
-            _firstKey = _iterator.Current.Key.ToArray();
+
         }
 
         public bool MoreToWrite => _moreToWrite;
@@ -40,7 +36,6 @@ namespace TrimDB.Core.Storage.Blocks
             var span = memoryToFill;
             do
             {
-
                 var key = _iterator.Current.Key;
                 var value = _iterator.Current.Value;
 

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -17,29 +18,46 @@ namespace TrimDB.Benchmarks
     {
         public static async Task Main(string[] args)
         {
-            Console.WriteLine("Are you ready?");
-            
-            var sw = Stopwatch.StartNew();
-            Console.WriteLine("Started");
-            await WriteAndReadAsyncBlockFile();
-
-            Console.WriteLine($"This took {sw.ElapsedMilliseconds}ms");
             //var summary = BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
-        }
+            //return;
 
-        public static async Task WriteAndReadAsyncBlockFile()
-        {
-            var loadedWords = await System.IO.File.ReadAllLinesAsync("words.txt");
+            Console.WriteLine("Are you ready?");
+            Console.ReadLine();
+
+            Console.WriteLine("Started");
+            var loadedWords = await File.ReadAllLinesAsync("words.txt");
 
             var wordSpans = loadedWords.Select(w => Encoding.UTF8.GetBytes(w)).ToArray();
 
-            var tempPath = System.IO.Path.GetTempPath();
-            var fileName = System.IO.Path.Combine(tempPath, "Level1_1.trim");
+            var tempPath = Path.GetTempPath();
+            var fileName = Path.Combine(tempPath, "Level1_1.trim");
 
+
+            var sw = Stopwatch.StartNew();
+
+            await WriteAndReadAsyncBlockFile(fileName, wordSpans);
+
+            Console.WriteLine($"This took {sw.ElapsedMilliseconds}ms");
+
+
+        }
+
+        public static async Task WriteAndReadAsyncBlockFile(string fileName, byte[][] wordSpans)
+        {
             using (var blockCache = new ProtoSharded(200))
             {
                 var loadedTable = new TableFile(fileName, blockCache);
                 await loadedTable.LoadAsync();
+
+                var block = await blockCache.GetBlock(new Core.Storage.Blocks.FileIdentifier(1, 1), 0);
+
+                using (var fs = new StreamWriter("C:\\code\\trimdb\\array.txt"))
+                {
+                    for (var i = 0; i < block.Memory.Length; i++)
+                    {
+                        fs.Write($"{block.Memory.Span[i]},");
+                    }
+                }
 
                 // Check we can get the values back out
 
@@ -62,11 +80,10 @@ namespace TrimDB.Benchmarks
                         }
                     });
                 }
-
                 await Task.WhenAll(taskList);
             }
 
-            
+
         }
     }
 }

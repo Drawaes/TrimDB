@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -108,6 +109,21 @@ namespace TrimDB.Core
                 }
             }
             return default;
+        }
+
+        internal async ValueTask<SearchResult> DoesKeyExistBelowLevel(ReadOnlyMemory<byte> key, int levelId)
+        {
+            var keyHash = _hasher.ComputeHash64(key.Span);
+            for(var i = levelId; i < _storageLayers.Count; i++)
+            {
+                var storage = _storageLayers[i];
+                var result = await storage.GetAsync(key, keyHash);
+                if(result.Result == SearchResult.Deleted || result.Result == SearchResult.Found)
+                {
+                    return result.Result;
+                }
+            }
+            return SearchResult.NotFound;
         }
 
         public ValueTask<bool> DeleteAsync(ReadOnlySpan<byte> key)

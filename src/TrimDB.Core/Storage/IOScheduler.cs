@@ -108,7 +108,7 @@ namespace TrimDB.Core.Storage
 
             var merger = new TableFileMerger(overlapped.Select(ol => ol.GetAsyncEnumerator()).ToArray());
             // Begin writing out to disk
-            var writer = new TableFileMergeWriter(nextLayer, _database.BlockCache);
+            var writer = new TableFileMergeWriter(_database, nextLayer, _database.BlockCache,  unsortedLayer.Level);
             await writer.WriteFromMerger(merger);
 
             nextLayer.AddAndRemoveTableFiles(writer.NewTableFiles, overlapped);

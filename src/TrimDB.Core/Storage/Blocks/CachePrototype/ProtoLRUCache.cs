@@ -11,17 +11,16 @@ using System.Threading.Tasks;
 
 namespace TrimDB.Core.Storage.Blocks.CachePrototype
 {
-    internal class ProtoLRUCache
+    internal class ProtoLRUCache:IDisposable
     {
-        private LinkedList<ProtoBlock> _lruList = new LinkedList<ProtoBlock>();
-        private Dictionary<BlockIdentifier, LinkedListNode<ProtoBlock>> _lookup = new Dictionary<BlockIdentifier, LinkedListNode<ProtoBlock>>();
-        private List<LinkedListNode<ProtoBlock>> _referencedBlocks = new List<LinkedListNode<ProtoBlock>>();
+        private readonly LinkedList<ProtoBlock> _lruList = new LinkedList<ProtoBlock>();
+        private readonly Dictionary<BlockIdentifier, LinkedListNode<ProtoBlock>> _lookup = new Dictionary<BlockIdentifier, LinkedListNode<ProtoBlock>>();
         private int _currentOffset;
-        private object _lock = new object();
-        private byte[] _pinnedSlab;
-        private int _maxBlocks;
+        private readonly object _lock = new object();
+        private readonly byte[] _pinnedSlab;
+        private readonly int _maxBlocks;
         private GCHandle _gcHandle;
-        private ConcurrentDictionary<FileIdentifier, ProtoFile> _files;
+        private readonly ConcurrentDictionary<FileIdentifier, ProtoFile> _files;
 
         public ProtoLRUCache(int maxBlocks, ConcurrentDictionary<FileIdentifier, ProtoFile> files)
         {
@@ -35,37 +34,33 @@ namespace TrimDB.Core.Storage.Blocks.CachePrototype
 
         public static int AlignLength(long memoryAddress) => (int)(((memoryAddress + (FileConsts.PageSize - 1)) & ~(FileConsts.PageSize - 1)) - memoryAddress);
 
-
         public async Task<IMemoryOwner<byte>> GetMemory(FileIdentifier fileId, int blockId)
         {
             var bid = new BlockIdentifier() { BlockId = (uint)blockId, FileId = (ushort)fileId.FileId, LevelId = (ushort)fileId.Level };
             LinkedListNode<ProtoBlock> node;
             ProtoBlock block = null;
+            var lookup = _lookup;
 
             lock (_lock)
             {
-                if (_lookup.TryGetValue(bid, out node))
+                if (lookup.TryGetValue(bid, out node))
                 {
                     if (node.Value.RefCount == 0)
                     {
                         _lruList.Remove(node);
-                        _referencedBlocks.Add(node);
                     }
                     node.Value.RefCount++;
-                    ProtoEventSource.Log.ReportCacheHit();
                 }
                 else
                 {
-                    ProtoEventSource.Log.ReportCacheMiss();
-                    if (_lookup.Count < _maxBlocks)
+                    if (lookup.Count < _maxBlocks)
                     {
                         var offset = _currentOffset;
                         _currentOffset += FileConsts.PageSize;
 
                         block = new ProtoBlock(bid, offset);
                         node = new LinkedListNode<ProtoBlock>(block);
-                        _lookup.Add(bid, node);
-                        _referencedBlocks.Add(node);
+                        lookup.Add(bid, node);
                     }
                     else
                     {
@@ -76,12 +71,11 @@ namespace TrimDB.Core.Storage.Blocks.CachePrototype
                         }
                         else
                         {
-                            _lookup.Remove(lastNode.Value.BlockId);
+                            lookup.Remove(lastNode.Value.BlockId);
                             _lruList.RemoveLast();
                             block = new ProtoBlock(bid, lastNode.Value.Offset);
                             node = new LinkedListNode<ProtoBlock>(block);
-                            _lookup.Add(bid, node);
-                            _referencedBlocks.Add(node);
+                            lookup.Add(bid, node);
                         }
                     }
                 }
@@ -90,6 +84,11 @@ namespace TrimDB.Core.Storage.Blocks.CachePrototype
             if (block != null)
             {
                 _files[fileId].ReadBlock(IntPtr.Add(_gcHandle.AddrOfPinnedObject(), block.Offset), bid);
+                ProtoEventSource.Log.ReportCacheMiss();
+            }
+            else
+            {
+                ProtoEventSource.Log.ReportCacheHit();
             }
 
             await node.Value.Task;
@@ -117,10 +116,17 @@ namespace TrimDB.Core.Storage.Blocks.CachePrototype
                 node.Value.RefCount--;
                 if (node.Value.RefCount == 0)
                 {
-                    _referencedBlocks.Remove(node);
                     _lruList.AddFirst(node);
                 }
             }
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void ThrowNotImplementedException()
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Dispose() => _gcHandle.Free();
     }
 }

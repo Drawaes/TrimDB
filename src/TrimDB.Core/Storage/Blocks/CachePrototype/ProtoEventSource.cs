@@ -10,28 +10,26 @@ namespace TrimDB.Core.Storage.Blocks.CachePrototype
     [EventSource(Name = "ProtoBlockCache")]
     public class ProtoEventSource : EventSource
     {
-        private EventCounter _cacheHits;
-        private EventCounter _cacheMisses;
+        private IncrementingEventCounter _cacheHits;
+        private IncrementingEventCounter _cacheMisses;
         private int _cacheHitsCount;
         private int _cacheMissCount;
         public static readonly ProtoEventSource Log = new ProtoEventSource();
 
         public ProtoEventSource()
         {
-            _cacheHits = new EventCounter("CacheHits", this);
-            _cacheMisses = new EventCounter("CacheMisses", this);
+            _cacheHits = new IncrementingEventCounter("CacheHits", this);
+            _cacheMisses = new IncrementingEventCounter("CacheMisses", this);
         }
 
         public void ReportCacheHit()
         {
-            var hits = Interlocked.Increment(ref _cacheHitsCount);
-            _cacheHits.WriteMetric((double)hits);
+            _cacheHits.Increment();
         }
 
         public void ReportCacheMiss()
         {
-            var miss = Interlocked.Increment(ref _cacheMissCount);
-            _cacheMisses.WriteMetric((double)miss);
+            _cacheMisses.Increment();
         }
     }
 }

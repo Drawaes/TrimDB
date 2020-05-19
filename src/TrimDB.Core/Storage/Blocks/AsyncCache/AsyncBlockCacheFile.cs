@@ -15,11 +15,11 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
     public class AsyncBlockCacheFile : IDisposable
     {
         private string _fileName;
-        private FileIdentifier _id;
-        private AsyncBlockManager?[] _blocks;
-        private SafeFileHandle _fileHandle;
-        private AsyncBlockCache _cache;
-        private CompletionPorts.CompletionPortSafeHandle _cpHandle;
+        private readonly FileIdentifier _id;
+        private readonly AsyncBlockManager?[] _blocks;
+        private readonly SafeFileHandle _fileHandle;
+        private readonly AsyncBlockCache _cache;
+        private readonly CompletionPorts.CompletionPortSafeHandle _cpHandle;
 
         public AsyncBlockCacheFile(string fileName, int blockCount, FileIdentifier id, AsyncBlockCache cache)
         {
@@ -103,7 +103,7 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
             }
         }
 
-        internal void CompleteBlock(int blockId) => _blocks[blockId].CompleteSuccess();
+        internal void CompleteBlock(int blockId) => _blocks[blockId]?.CompleteSuccess();
 
         public void Dispose()
         {

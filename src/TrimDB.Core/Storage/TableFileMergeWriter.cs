@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
@@ -10,6 +11,7 @@ using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using TrimDB.Core.InMemory;
 using TrimDB.Core.Storage.Blocks;
+using TrimDB.Core.Storage.Blocks.CachePrototype;
 using TrimDB.Core.Storage.Filters;
 using TrimDB.Core.Storage.Layers;
 using TrimDB.Core.Storage.MetaData;
@@ -27,9 +29,12 @@ namespace TrimDB.Core.Storage
         private PipeWriter _filePipe;
         private long _currentFileSize = 0;
         private TableMetaData _metaData = new TableMetaData();
+        private TrimDatabase _database;
+        private int _lowestLevel;
 
-        public TableFileMergeWriter(StorageLayer layer, BlockCache blockCache)
+        public TableFileMergeWriter(TrimDatabase database, StorageLayer layer, BlockCache blockCache, int lowestLevel)
         {
+            _database = database;
             _layer = layer;
             _blockCache = blockCache;
         }
@@ -106,9 +111,17 @@ namespace TrimDB.Core.Storage
 
             do
             {
-                _metaData.Count++;
-                
-                var sizeNeeded = SizeNeededOnBlock(merger.Current);
+                var sizeNeeded = 0;
+                if (merger.Current.IsDeleted)
+                {
+                    var doesExist = await _database.DoesKeyExistBelowLevel(merger.Current.Key.ToArray(), _lowestLevel);
+                    if (doesExist == SearchResult.NotFound || doesExist == SearchResult.Deleted) continue;
+                    sizeNeeded = (sizeof(int) * 2) + merger.Current.Key.Length;
+                }
+                else
+                {
+                    sizeNeeded = (sizeof(int) * 2) + merger.Current.Key.Length + merger.Current.Value.Length;
+                }
 
                 if (sizeNeeded > memBlock.Length)
                 {
@@ -118,17 +131,22 @@ namespace TrimDB.Core.Storage
                     return false;
                 }
 
+                _metaData.Count++;
                 _metaData.Filter.AddKey(merger.Current.Key);
-                BinaryPrimitives.WriteInt64LittleEndian(memBlock.Span, sizeNeeded);
-                memBlock = memBlock[sizeof(long)..];
-
-                var keyLength = merger.Current.Key.Length;
-
-                BinaryPrimitives.WriteInt32LittleEndian(memBlock.Span, keyLength);
+                BinaryPrimitives.WriteInt32LittleEndian(memBlock.Span, merger.Current.Key.Length);
                 memBlock = memBlock[sizeof(int)..];
-
                 merger.Current.Key.CopyTo(memBlock.Span);
-                memBlock = memBlock[keyLength..];
+                memBlock = memBlock[merger.Current.Key.Length..];
+
+                if (merger.Current.IsDeleted)
+                {
+                    BinaryPrimitives.WriteInt32LittleEndian(memBlock.Span, -1);
+                    memBlock = memBlock[sizeof(int)..];
+                    continue;
+                }
+
+                BinaryPrimitives.WriteInt32LittleEndian(memBlock.Span, merger.Current.Value.Length);
+                memBlock = memBlock[sizeof(int)..];
                 merger.Current.Value.CopyTo(memBlock.Span);
                 memBlock = memBlock[merger.Current.Value.Length..];
 
@@ -138,12 +156,6 @@ namespace TrimDB.Core.Storage
             _filePipe.Advance(FileConsts.PageSize);
             _currentFileSize += FileConsts.PageSize;
             return true;
-        }
-
-        private long SizeNeededOnBlock(IMemoryItem memoryItem)
-        {
-            var sizeNeeded = (long)(sizeof(long) + sizeof(int) + memoryItem.Key.Length + memoryItem.Value.Length);
-            return sizeNeeded;
         }
     }
 }
