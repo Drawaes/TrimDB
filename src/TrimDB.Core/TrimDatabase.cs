@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,9 +25,9 @@ namespace TrimDB.Core
         private readonly IOScheduler _ioScheduler;
         private readonly BlockCache _blockCache;
 
-        public TrimDatabase(Func<MemoryTable> inMemoryFunc, int levels, string databaseFolder)
+        public TrimDatabase(Func<MemoryTable> inMemoryFunc, BlockCache blockCache, int levels, string databaseFolder)
         {
-            _blockCache = new BlockCache();
+            _blockCache = blockCache;
             if (!System.IO.Directory.Exists(databaseFolder))
             {
                 System.IO.Directory.CreateDirectory(databaseFolder);
@@ -110,6 +111,21 @@ namespace TrimDB.Core
             return default;
         }
 
+        internal async ValueTask<SearchResult> DoesKeyExistBelowLevel(ReadOnlyMemory<byte> key, int levelId)
+        {
+            var keyHash = _hasher.ComputeHash64(key.Span);
+            for(var i = levelId; i < _storageLayers.Count; i++)
+            {
+                var storage = _storageLayers[i];
+                var result = await storage.GetAsync(key, keyHash);
+                if(result.Result == SearchResult.Deleted || result.Result == SearchResult.Found)
+                {
+                    return result.Result;
+                }
+            }
+            return SearchResult.NotFound;
+        }
+
         public ValueTask<bool> DeleteAsync(ReadOnlySpan<byte> key)
         {
             throw new NotImplementedException();
@@ -130,7 +146,6 @@ namespace TrimDB.Core
             }
         }
 
-        // TODO : Solve the overwriting the old skip list if its not on disk yet
         private async Task SwitchInMemoryTable(MemoryTable sl)
         {
             await _skipListLock.WaitAsync();

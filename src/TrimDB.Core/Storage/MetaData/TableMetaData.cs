@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -17,13 +18,14 @@ namespace TrimDB.Core.Storage.MetaData
         private List<TableOfContentsEntry> _tocEntries = new List<TableOfContentsEntry>();
         private List<long> _blockEntries = new List<long>();
         private Filter _filter = new XorFilter();
-        private ReadOnlyMemory<byte> _lastKey;
-        private ReadOnlyMemory<byte> _firstKey;
 
         public int BlockCount => _blockEntries.Count;
-        public ReadOnlyMemory<byte> FirstKey => _firstKey;
-        public ReadOnlyMemory<byte> LastKey => _lastKey;
+        public ReadOnlyMemory<byte> FirstKey { get; set; }
+        public ReadOnlyMemory<byte> LastKey { get; set; }
         public Filter Filter => _filter;
+        public int Count { get; set; }
+
+        public void AddTableEntry(long offset, int length, TableOfContentsEntryType entryType) => _tocEntries.Add(new TableOfContentsEntry() { EntryType = entryType, Length = length, Offset = offset });
 
         public static async Task<TableMetaData> LoadFromFileAsync(string fileName)
         {
@@ -95,6 +97,11 @@ namespace TrimDB.Core.Storage.MetaData
             }
         }
 
+        public void AddBlockOffset(long blockOffset)
+        {
+            _blockEntries.Add(blockOffset);
+        }
+
         private static void ReadFilter(TableMetaData metaData, ReadOnlyMemory<byte> memory) => metaData._filter.LoadFromBlock(memory);
 
         private static void ReadStatistics(TableMetaData metaData, ReadOnlyMemory<byte> memory)
@@ -106,14 +113,92 @@ namespace TrimDB.Core.Storage.MetaData
             var keyBuffer = new byte[keyLength];
             var tmpSpan = span.Slice(4, keyLength);
             tmpSpan.CopyTo(keyBuffer);
-            metaData._firstKey = keyBuffer;
+            metaData.FirstKey = keyBuffer;
             span = span[(sizeof(int) + keyLength)..];
 
             keyLength = BinaryPrimitives.ReadInt32LittleEndian(span);
             keyBuffer = new byte[keyLength];
             span.Slice(4, keyLength).CopyTo(keyBuffer);
-            metaData._lastKey = keyBuffer;
+            metaData.LastKey = keyBuffer;
             span = span[(sizeof(int) + keyLength)..];
+        }
+
+        public int WriteBlockOffsets(PipeWriter pipeWriter)
+        {
+            var sizeToWrite = _blockEntries.Count * sizeof(long) + sizeof(int);
+
+            var span = pipeWriter.GetSpan(sizeToWrite);
+            var totalSpan = span[..sizeToWrite];
+
+            BinaryPrimitives.WriteInt32LittleEndian(span, _blockEntries.Count);
+            span = span[sizeof(int)..];
+
+            foreach (var offset in _blockEntries)
+            {
+                BinaryPrimitives.WriteInt64LittleEndian(span, offset);
+                span = span[sizeof(long)..];
+            }
+
+            pipeWriter.Advance(sizeToWrite);
+            return sizeToWrite;
+        }
+
+        public void WriteTOC(PipeWriter filePipe)
+        {
+            var tocSize = _tocEntries.Count * Unsafe.SizeOf<TableOfContentsEntry>();
+            tocSize += sizeof(uint) + sizeof(int) + sizeof(int);
+
+            var span = filePipe.GetSpan(tocSize);
+            span = span[..tocSize];
+            var totalSpan = span;
+
+            foreach (var te in _tocEntries)
+            {
+                span = WriteTOCEntry(span, te.EntryType, te.Offset, te.Length);
+            }
+
+            BinaryPrimitives.WriteInt32LittleEndian(span, FileConsts.Version);
+            span = span[sizeof(int)..];
+
+            BinaryPrimitives.WriteInt32LittleEndian(span, tocSize);
+            span = span[sizeof(int)..];
+
+            BinaryPrimitives.WriteUInt32LittleEndian(span, FileConsts.MagicNumber);
+            span = span[sizeof(uint)..];
+
+            filePipe.Advance(tocSize);
+        }
+
+        public static Span<byte> WriteTOCEntry(Span<byte> span, TableOfContentsEntryType tocType, long offset, int length)
+        {
+            var tocEntry = new TableOfContentsEntry() { EntryType = tocType, Offset = offset, Length = length };
+            Unsafe.WriteUnaligned(ref MemoryMarshal.GetReference(span), tocEntry);
+            return span[Unsafe.SizeOf<TableOfContentsEntry>()..];
+        }
+
+        public int WriteStats(PipeWriter pipeWriter)
+        {
+            var totalWritten = FirstKey.Length + sizeof(int) * 3 + LastKey.Length;
+
+            var memory = pipeWriter.GetSpan(totalWritten);
+            var totalSpan = memory[..totalWritten];
+
+            BinaryPrimitives.WriteInt32LittleEndian(memory, FirstKey.Length);
+            memory = memory[sizeof(int)..];
+            FirstKey.Span.CopyTo(memory);
+            memory = memory[FirstKey.Length..];
+
+            BinaryPrimitives.WriteInt32LittleEndian(memory, LastKey.Length);
+            memory = memory[sizeof(int)..];
+            LastKey.Span.CopyTo(memory);
+            memory = memory[LastKey.Length..];
+
+            BinaryPrimitives.WriteInt32LittleEndian(memory, Count);
+            memory = memory[sizeof(int)..];
+
+            pipeWriter.Advance(totalWritten);
+
+            return totalWritten;
         }
 
         private static async Task<TOCMemory> GetTOCMemory(FileStream fs, TableMetaData metaData, TableOfContentsEntryType entryType)
@@ -128,7 +213,6 @@ namespace TrimDB.Core.Storage.MetaData
         private static Task GetBlockFromFile(FileStream fs, long location, Memory<byte> memoryToFill)
         {
             fs.Seek(location, SeekOrigin.Begin);
-
             return GetBlockFromFile(fs, memoryToFill);
         }
 
@@ -144,7 +228,6 @@ namespace TrimDB.Core.Storage.MetaData
                     throw new InvalidOperationException("Could not read any data from the file");
                 }
                 currentMemory = currentMemory.Slice(result);
-
             }
         }
 

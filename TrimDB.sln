@@ -39,6 +39,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TrimDB.Core", "src\TrimDB.C
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TrimDB.Core.Facts", "tests\TrimDB.Core.Facts\TrimDB.Core.Facts.csproj", "{9A0D6D6D-C8F8-4702-87ED-F67F05442B37}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TrimDB.DatabaseStress", "benchmarks\TrimDB.DatabaseStress\TrimDB.DatabaseStress.csproj", "{15E622EE-2445-4272-BA20-A3EDC878F8D5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -57,6 +59,10 @@ Global
 		{9A0D6D6D-C8F8-4702-87ED-F67F05442B37}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9A0D6D6D-C8F8-4702-87ED-F67F05442B37}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9A0D6D6D-C8F8-4702-87ED-F67F05442B37}.Release|Any CPU.Build.0 = Release|Any CPU
+		{15E622EE-2445-4272-BA20-A3EDC878F8D5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{15E622EE-2445-4272-BA20-A3EDC878F8D5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{15E622EE-2445-4272-BA20-A3EDC878F8D5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{15E622EE-2445-4272-BA20-A3EDC878F8D5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -65,6 +71,7 @@ Global
 		{4C44A676-62D6-4805-9B05-B6C0836B5DD7} = {1B9A3EE5-CC6B-4915-AE92-6BF316E53DC8}
 		{189F860F-7A65-4569-B264-B958FEFDF1AF} = {5222DDE2-1EDD-4EE8-B0E0-FE11C152E485}
 		{9A0D6D6D-C8F8-4702-87ED-F67F05442B37} = {7B7C0343-6B49-4D54-BEE2-DB279C70577C}
+		{15E622EE-2445-4272-BA20-A3EDC878F8D5} = {1B9A3EE5-CC6B-4915-AE92-6BF316E53DC8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {3927E62A-6330-4331-9B9A-160C0CE4D994}

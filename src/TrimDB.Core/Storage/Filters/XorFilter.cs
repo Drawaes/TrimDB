@@ -22,8 +22,8 @@ namespace TrimDB.Core.Storage.Filters
         private int _blockLength;
         private long _seed;
         private byte[] _fingerPrints;
-        private List<long> _keys = new List<long>();
-        private MurmurHash3 _hash = new MurmurHash3();
+        private readonly List<long> _keys = new List<long>();
+        private readonly MurmurHash3 _hash = new MurmurHash3();
 
         private static int GetArrayLength(int size) => Hashes + (SizeFactor * size / 100);
 
@@ -48,9 +48,9 @@ namespace TrimDB.Core.Storage.Filters
                 Array.Fill(t2, 0);
                 foreach (var k in keys)
                 {
-                    for (int hi = 0; hi < Hashes; hi++)
+                    for (var hi = 0; hi < Hashes; hi++)
                     {
-                        int h = GetHash(k, _seed, hi);
+                        var h = GetHash(k, _seed, hi);
                         t2[h] ^= k;
                         if (t2count[h] > 120)
                         {
@@ -73,11 +73,11 @@ namespace TrimDB.Core.Storage.Filters
                         }
                     }
                 }
-                int found = -1;
+                var found = -1;
                 while (true)
                 {
-                    int i = -1;
-                    for (int hi = 0; hi < Hashes; hi++)
+                    var i = -1;
+                    for (var hi = 0; hi < Hashes; hi++)
                     {
                         if (alonePos[hi] > 0)
                         {
@@ -95,7 +95,7 @@ namespace TrimDB.Core.Storage.Filters
                     {
                         continue;
                     }
-                    long k = t2[i];
+                    var k = t2[i];
                     if (t2count[i] != 1)
                     {
                         throw new Exception();
@@ -105,7 +105,7 @@ namespace TrimDB.Core.Storage.Filters
                     {
                         if (hi != found)
                         {
-                            int h = GetHash(k, _seed, hi);
+                            var h = GetHash(k, _seed, hi);
                             int newCount = --t2count[h];
                             if (newCount == 1)
                             {
@@ -122,16 +122,16 @@ namespace TrimDB.Core.Storage.Filters
             } while (reverseOrderPos != _size);
 
             var fp = new byte[m];
-            for (int i = reverseOrderPos - 1; i >= 0; i--)
+            for (var i = reverseOrderPos - 1; i >= 0; i--)
             {
-                long k = reverseOrder[i];
-                int found = reverseH[i];
-                int change = -1;
-                long hash = (long)MixSplit((ulong)k, (ulong)_seed);
-                int xor = FingerPrint(hash);
-                for (int hi = 0; hi < Hashes; hi++)
+                var k = reverseOrder[i];
+                var change = -1;
+                var hash = (long)MixSplit((ulong)k, (ulong)_seed);
+                var xor = FingerPrint(hash);
+                for (var hi = 0; hi < Hashes; hi++)
                 {
-                    int h = GetHash(k, _seed, hi);
+                    var h = GetHash(k, _seed, hi);
+                    int found = reverseH[i];
                     if (found == hi)
                     {
                         change = h;
@@ -155,8 +155,8 @@ namespace TrimDB.Core.Storage.Filters
 
         public override bool MayContainKey(long key)
         {
-            long hash = (long)MixSplit((ulong)key, (ulong)_seed);
-            int f = FingerPrint(hash);
+            var hash = (long)MixSplit((ulong)key, (ulong)_seed);
+            var f = FingerPrint(hash);
             var r0 = (uint)hash;
             var r1 = (uint)System.Numerics.BitOperations.RotateLeft((ulong)hash, 21);
             var r2 = (uint)System.Numerics.BitOperations.RotateLeft((ulong)hash, 42);
@@ -225,7 +225,7 @@ namespace TrimDB.Core.Storage.Filters
         {
             unchecked
             {
-                long r = (long)System.Numerics.BitOperations.RotateLeft(MixSplit((ulong)key, (ulong)seed), (byte)(21 * index));
+                var r = (long)System.Numerics.BitOperations.RotateLeft(MixSplit((ulong)key, (ulong)seed), (byte)(21 * index));
                 r = Reduce((uint)r, (uint)_blockLength);
                 r += index * _blockLength;
                 return (int)r;
@@ -249,7 +249,7 @@ namespace TrimDB.Core.Storage.Filters
         {
             unchecked
             {
-                seed = seed + 0x9e3779B97F4A7C15;
+                seed += 0x9e3779B97F4A7C15;
                 var z = seed;
                 z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9;
                 z = (z ^ (z >> 27)) * 0x94D049BB133111EB;

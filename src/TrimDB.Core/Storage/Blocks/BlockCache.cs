@@ -7,78 +7,25 @@ using System.Threading.Tasks;
 
 namespace TrimDB.Core.Storage.Blocks
 {
-    public class BlockCache : IDisposable
+    public abstract class BlockCache : IDisposable
     {
-        private readonly ConcurrentDictionary<FileIdentifier, BlockCacheFile> _cache = new ConcurrentDictionary<FileIdentifier, BlockCacheFile>();
+        public abstract void RegisterFile(string fileName, int blockCount, FileIdentifier id);
 
-        public void RegisterFile(string fileName, FileIdentifier id)
-        {
-            var file = new BlockCacheFile(fileName, id, this);
-            _cache.TryAdd(id, file);
-        }
+        public abstract void RemoveFile(FileIdentifier id);
 
-        public void RemoveFile(FileIdentifier id)
-        {
-            if (_cache.TryRemove(id, out var file))
-            {
-                file.Dispose();
-            }
-        }
+        public abstract ValueTask<IMemoryOwner<byte>> GetBlock(FileIdentifier id, int blockId);
 
-        public ValueTask<IMemoryOwner<byte>> GetBlock(FileIdentifier id, int blockId)
-        {
-            var file = _cache[id];
-            var memory = file.GetBlockAsync(blockId);
-            return memory;
-        }
-
-        internal void ReturnBlock(BlockCacheMemory blockCacheMemory)
-        {
-            _cache[blockCacheMemory.FileId].MemoryReturned();
-        }
-
-
-        public void RemapFile(FileIdentifier oldFile, FileIdentifier newFile)
-        {
-            throw new NotImplementedException();
-        }
+        protected virtual void Dispose(bool disposing) { }
 
         public void Dispose()
         {
-            foreach (var bcf in _cache.Values)
-            {
-                bcf.Dispose();
-            }
-        }
-    }
-
-    public class BlockCacheMemory : MemoryManager<byte>
-    {
-        private readonly BlockCache _blockCache;
-        private readonly FileIdentifier _fileId;
-        private readonly int _blockId;
-        private readonly IntPtr _ptr;
-
-        public BlockCacheMemory(BlockCache blockCache, FileIdentifier fileId, int blockId, IntPtr ptr)
-        {
-            _blockCache = blockCache;
-            _fileId = fileId;
-            _blockId = blockId;
-            _ptr = IntPtr.Add(ptr, blockId * FileConsts.PageSize);
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
         }
 
-        public int BlockId => _blockId;
-        public FileIdentifier FileId => _fileId;
-
-        public unsafe override Span<byte> GetSpan() => new Span<byte>(_ptr.ToPointer(), FileConsts.PageSize);
-
-        public override MemoryHandle Pin(int elementIndex = 0) => new MemoryHandle();
-
-        public override void Unpin() { }
-
-        protected override void Dispose(bool disposing)
+        ~BlockCache()
         {
-            _blockCache.ReturnBlock(this);
+            Dispose(disposing: false);
         }
     }
 }

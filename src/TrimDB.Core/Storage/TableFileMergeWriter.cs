@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
@@ -10,6 +11,7 @@ using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using TrimDB.Core.InMemory;
 using TrimDB.Core.Storage.Blocks;
+using TrimDB.Core.Storage.Blocks.CachePrototype;
 using TrimDB.Core.Storage.Filters;
 using TrimDB.Core.Storage.Layers;
 using TrimDB.Core.Storage.MetaData;
@@ -25,16 +27,14 @@ namespace TrimDB.Core.Storage
         private string _fileName;
         private Stream _fileStream;
         private PipeWriter _filePipe;
-        private ReadOnlyMemory<byte> _firstKey;
-        private ReadOnlyMemory<byte> _lastKey;
-        private Filter _currentFilter;
         private long _currentFileSize = 0;
-        private List<long> _blockOffsets;
-        private int _itemCount;
+        private TableMetaData _metaData = new TableMetaData();
+        private TrimDatabase _database;
+        private int _lowestLevel;
 
-
-        public TableFileMergeWriter(StorageLayer layer, BlockCache blockCache)
+        public TableFileMergeWriter(TrimDatabase database, StorageLayer layer, BlockCache blockCache, int lowestLevel)
         {
+            _database = database;
             _layer = layer;
             _blockCache = blockCache;
         }
@@ -46,32 +46,26 @@ namespace TrimDB.Core.Storage
             _fileName = _layer.GetNextFileName();
             _fileStream = File.OpenWrite(_fileName);
             _filePipe = PipeWriter.Create(_fileStream);
-            _currentFilter = new XorFilter();
             _currentFileSize = 0;
-            _blockOffsets = new List<long>();
-            _firstKey = default;
-            _itemCount = 0;
+            _metaData = new TableMetaData();
         }
 
         private async Task CloseOffCurrentTable()
         {
-            var currentLocation = _blockOffsets.Count * FileConsts.PageSize;
+            var currentLocation = _metaData.BlockCount * FileConsts.PageSize;
 
-            var filterOffset = currentLocation;
-            var filterSize = _currentFilter.WriteToPipe(_filePipe);
-
+            var filterSize = _metaData.Filter.WriteToPipe(_filePipe);
+            _metaData.AddTableEntry(currentLocation, filterSize, TableOfContentsEntryType.Filter);
             currentLocation += filterSize;
 
-            var statsOffset = currentLocation;
-            var statsSize = TableFileFooter.WriteStats(_filePipe, _firstKey.Span, _lastKey.Span, _itemCount);
+            var statsSize = _metaData.WriteStats(_filePipe);
+            _metaData.AddTableEntry(currentLocation, statsSize, TableOfContentsEntryType.Statistics);
             currentLocation += statsSize;
 
-            var blockOffsetsOffset = currentLocation;
-            var blockOffsetsSize = TableFileFooter.WriteBlockOffsets(_filePipe, _blockOffsets);
+            var blockOffsetsSize = _metaData.WriteBlockOffsets(_filePipe);
+            _metaData.AddTableEntry(currentLocation, blockOffsetsSize, TableOfContentsEntryType.BlockOffsets);
 
-            TableFileFooter.WriteTOC(_filePipe, new TableOfContentsEntry() { EntryType = TableOfContentsEntryType.Filter, Length = filterSize, Offset = filterOffset },
-                new TableOfContentsEntry() { EntryType = TableOfContentsEntryType.Statistics, Length = statsSize, Offset = statsOffset },
-                new TableOfContentsEntry() { EntryType = TableOfContentsEntryType.BlockOffsets, Length = blockOffsetsSize, Offset = blockOffsetsOffset });
+            _metaData.WriteTOC(_filePipe);
 
             await _filePipe.FlushAsync();
             await _filePipe.CompleteAsync();
@@ -88,10 +82,10 @@ namespace TrimDB.Core.Storage
             while (true)
             {
                 // Set the first key as we must be at the start of a new file
-                if (_firstKey.Length == 0)
+                if (_metaData.FirstKey.Length == 0)
                 {
                     StartNewFile();
-                    _firstKey = merger.Current.Key.ToArray();
+                    _metaData.FirstKey = merger.Current.Key.ToArray();
                 }
 
                 var mergerFinished = await WriteBlock(merger);
@@ -99,7 +93,7 @@ namespace TrimDB.Core.Storage
 
                 if (_currentFileSize >= _layer.MaxFileSize || mergerFinished)
                 {
-                    _lastKey = merger.Current.Key.ToArray();
+                    _metaData.LastKey = merger.Current.Key.ToArray();
 
                     await CloseOffCurrentTable();
                     if (mergerFinished) return;
@@ -112,14 +106,22 @@ namespace TrimDB.Core.Storage
             var memBlock = _filePipe.GetMemory(FileConsts.PageSize);
             var fullMemBlock = memBlock;
 
-            var currentOffset = _blockOffsets.Count * FileConsts.PageSize;
-            _blockOffsets.Add(currentOffset);
+            var currentOffset = _metaData.BlockCount * FileConsts.PageSize;
+            _metaData.AddBlockOffset(currentOffset);
 
             do
             {
-                _itemCount++;
-
-                var sizeNeeded = SizeNeededOnBlock(merger.Current);
+                var sizeNeeded = 0;
+                if (merger.Current.IsDeleted)
+                {
+                    var doesExist = await _database.DoesKeyExistBelowLevel(merger.Current.Key.ToArray(), _lowestLevel);
+                    if (doesExist == SearchResult.NotFound || doesExist == SearchResult.Deleted) continue;
+                    sizeNeeded = (sizeof(int) * 2) + merger.Current.Key.Length;
+                }
+                else
+                {
+                    sizeNeeded = (sizeof(int) * 2) + merger.Current.Key.Length + merger.Current.Value.Length;
+                }
 
                 if (sizeNeeded > memBlock.Length)
                 {
@@ -129,17 +131,22 @@ namespace TrimDB.Core.Storage
                     return false;
                 }
 
-                _currentFilter.AddKey(merger.Current.Key);
-                BinaryPrimitives.WriteInt64LittleEndian(memBlock.Span, sizeNeeded);
-                memBlock = memBlock[sizeof(long)..];
-
-                var keyLength = merger.Current.Key.Length;
-
-                BinaryPrimitives.WriteInt32LittleEndian(memBlock.Span, keyLength);
+                _metaData.Count++;
+                _metaData.Filter.AddKey(merger.Current.Key);
+                BinaryPrimitives.WriteInt32LittleEndian(memBlock.Span, merger.Current.Key.Length);
                 memBlock = memBlock[sizeof(int)..];
-
                 merger.Current.Key.CopyTo(memBlock.Span);
-                memBlock = memBlock[keyLength..];
+                memBlock = memBlock[merger.Current.Key.Length..];
+
+                if (merger.Current.IsDeleted)
+                {
+                    BinaryPrimitives.WriteInt32LittleEndian(memBlock.Span, -1);
+                    memBlock = memBlock[sizeof(int)..];
+                    continue;
+                }
+
+                BinaryPrimitives.WriteInt32LittleEndian(memBlock.Span, merger.Current.Value.Length);
+                memBlock = memBlock[sizeof(int)..];
                 merger.Current.Value.CopyTo(memBlock.Span);
                 memBlock = memBlock[merger.Current.Value.Length..];
 
@@ -149,12 +156,6 @@ namespace TrimDB.Core.Storage
             _filePipe.Advance(FileConsts.PageSize);
             _currentFileSize += FileConsts.PageSize;
             return true;
-        }
-
-        private long SizeNeededOnBlock(IMemoryItem memoryItem)
-        {
-            var sizeNeeded = (long)(sizeof(long) + sizeof(int) + memoryItem.Key.Length + memoryItem.Value.Length);
-            return sizeNeeded;
         }
     }
 }

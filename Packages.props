@@ -13,6 +13,7 @@
     <!-- btw will be better to use dotnet local tool -->
     <PackageReference Update="coverlet.collector" Version="1.2.1" />
     <PackageReference Update="xunit" Version="2.4.1" />
+    <PackageReference Include="FluentAssertions" Version="5.10.3" />
     <PackageReference Update="xunit.analyzers" Version="0.10.0" PrivateAssets="All" IncludeAssets="runtime; build; native; contentfiles; analyzers" />
     <PackageReference Update="xunit.runner.visualstudio" Version="2.4.1" PrivateAssets="All" IncludeAssets="runtime; build; native; contentfiles; analyzers" />
     <PackageReference Update="System.IO.Pipelines" Version="4.7.1" />

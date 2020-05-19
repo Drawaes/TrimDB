@@ -70,7 +70,7 @@ namespace TrimDB.Core.Facts
 
         private async Task CanPutInOrder(MemoryTable memoryTable)
         {
-            var loadedWords = await System.IO.File.ReadAllLinesAsync("words.txt");
+            var loadedWords = CommonData.Words;
 
             foreach (var word in loadedWords)
             {

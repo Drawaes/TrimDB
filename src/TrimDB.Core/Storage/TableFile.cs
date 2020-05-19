@@ -78,7 +78,7 @@ namespace TrimDB.Core.Storage
                 return GetLastValue();
                 async ValueTask<SearchResultValue> GetLastValue()
                 {
-                    using var firstBlock = await GetKVBlock(_metaData.BlockCount-1);
+                    using var firstBlock = await GetKVBlock(_metaData.BlockCount - 1);
                     firstBlock.GetLastKey();
                     return new SearchResultValue() { Result = SearchResult.Found, Value = firstBlock.GetCurrentValue() };
                 }
@@ -100,6 +100,10 @@ namespace TrimDB.Core.Storage
                 var result = block.TryFindKey(key.Span);
                 if (result == BlockReader.KeySearchResult.Found)
                 {
+                    if(block.IsDeleted)
+                    {
+                        return new SearchResultValue() { Result = SearchResult.Deleted, Value = default };
+                    }
                     return new SearchResultValue() { Result = SearchResult.Found, Value = block.GetCurrentValue().ToArray() };
                 }
                 if (result == BlockReader.KeySearchResult.Before)
@@ -132,7 +136,7 @@ namespace TrimDB.Core.Storage
         public async Task LoadAsync()
         {
             _metaData = await TableMetaData.LoadFromFileAsync(_fileName);
-            _blockCache.RegisterFile(_fileName, FileId);
+            _blockCache.RegisterFile(_fileName, _metaData.BlockCount, FileId);
         }
 
         public async Task<BlockReader> GetKVBlock(int blockId)

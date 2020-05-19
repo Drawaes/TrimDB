@@ -16,7 +16,7 @@
     <!-- Rider doesn't support deterministic build with SourceMap -->
     <!-- embedded not recommended yet for libs and nupkg, track this in https://github.com/dotnet/sdk/issues/2679 -->
     <!-- also embedded doesn't work with dotnet pack without nuspec or IncludeBuildOutput = false -->
-    <DebugType>portable</DebugType>
+    <DebugType>Full</DebugType>
     <DebugSymbols>true</DebugSymbols>
     <!-- NU5105: The package version uses SemVer 2.0.0 or components of SemVer 1.0.0 that are not supported on legacy clients -->
     <!-- NU5048: The 'PackageIconUrl'/'iconUrl' element is deprecated -->

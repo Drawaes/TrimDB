@@ -8,7 +8,6 @@ namespace TrimDB.Core.InMemory.SkipList32
     public class SkipListEnumerator32 : IEnumerator<IMemoryItem>
     {
         private readonly NativeAllocator32 _allocator;
-        private readonly SkipListItem32 _item;
         private int _currentLocation;
 
         internal SkipListEnumerator32(NativeAllocator32 allocator)
