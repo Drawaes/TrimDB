@@ -74,6 +74,7 @@ namespace TrimDB.Core.Storage
             var tf = new TableFile(_fileName, _blockCache);
             _newTableFiles.Add(tf);
             await tf.LoadAsync();
+
         }
 
         public async Task WriteFromMerger(TableFileMerger merger)
@@ -93,9 +94,8 @@ namespace TrimDB.Core.Storage
 
                 if (_currentFileSize >= _layer.MaxFileSize || mergerFinished)
                 {
-                    _metaData.LastKey = merger.Current.Key.ToArray();
-
                     await CloseOffCurrentTable();
+                    _metaData.FirstKey = Array.Empty<byte>();
                     if (mergerFinished) return;
                 }
             }
@@ -107,7 +107,7 @@ namespace TrimDB.Core.Storage
             var fullMemBlock = memBlock;
 
             var currentOffset = _metaData.BlockCount * FileConsts.PageSize;
-            _metaData.AddBlockOffset(currentOffset);
+            _metaData.AddBlockOffset(currentOffset, merger.Current.Key.ToArray());
 
             do
             {
@@ -136,6 +136,8 @@ namespace TrimDB.Core.Storage
                 BinaryPrimitives.WriteInt32LittleEndian(memBlock.Span, merger.Current.Key.Length);
                 memBlock = memBlock[sizeof(int)..];
                 merger.Current.Key.CopyTo(memBlock.Span);
+                _metaData.LastKey = merger.Current.Key.ToArray();
+
                 memBlock = memBlock[merger.Current.Key.Length..];
 
                 if (merger.Current.IsDeleted)

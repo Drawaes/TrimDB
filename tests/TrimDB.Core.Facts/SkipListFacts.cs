@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions.Common;
 using TrimDB.Core.InMemory;
 using TrimDB.Core.InMemory.SkipList32;
 using TrimDB.Core.InMemory.SkipList64;
@@ -26,7 +27,7 @@ namespace TrimDB.Core.Facts
         [Fact]
         public Task CanPutInOrder64()
         {
-            using var simpleAllocator = new NativeAllocator64(4096 * 10_000, 25);
+            using var simpleAllocator = new NativeAllocator64(4096 * 20_000, 25);
             var skipList = new SkipList64(simpleAllocator);
             return CanPutInOrder(skipList);
         }
@@ -76,7 +77,16 @@ namespace TrimDB.Core.Facts
             {
                 var utf8 = Encoding.UTF8.GetBytes(word);
                 var value = Encoding.UTF8.GetBytes($"VALUE={word}");
-                memoryTable.Put(utf8, value);
+                var result = memoryTable.Put(utf8, value);
+                Assert.True(result);
+            }
+
+            foreach(var word in loadedWords)
+            {
+                var utf8 = Encoding.UTF8.GetBytes(word);
+                var value = Encoding.UTF8.GetBytes($"VALUE={word}");
+                var result = memoryTable.TryGet(utf8, out _);
+                Assert.Equal(SearchResult.Found, result);
             }
         }
     }

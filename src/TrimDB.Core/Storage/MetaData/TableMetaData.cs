@@ -2,6 +2,7 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
@@ -16,7 +17,7 @@ namespace TrimDB.Core.Storage.MetaData
     public class TableMetaData
     {
         private List<TableOfContentsEntry> _tocEntries = new List<TableOfContentsEntry>();
-        private List<long> _blockEntries = new List<long>();
+        private List<(long offset, ReadOnlyMemory<byte> firstKey)> _blockEntries = new List<(long, ReadOnlyMemory<byte>)>();
         private Filter _filter = new XorFilter();
 
         public int BlockCount => _blockEntries.Count;
@@ -26,6 +27,26 @@ namespace TrimDB.Core.Storage.MetaData
         public int Count { get; set; }
 
         public void AddTableEntry(long offset, int length, TableOfContentsEntryType entryType) => _tocEntries.Add(new TableOfContentsEntry() { EntryType = entryType, Length = length, Offset = offset });
+
+        public int FindContainingBlock(ReadOnlyMemory<byte> key)
+        {
+            var result = _blockEntries.BinarySearch((0, key), CompareIndex.Instance);
+            if (result < 0)
+            {
+                result = ~result;
+                return result - 1;
+            }
+            return result;
+        }
+
+        private class CompareIndex : IComparer<(long offset, ReadOnlyMemory<byte> key)>
+        {
+            public static readonly CompareIndex Instance = new CompareIndex();
+
+            private CompareIndex() { }
+
+            public int Compare((long offset, ReadOnlyMemory<byte> key) x, (long offset, ReadOnlyMemory<byte> key) y) => x.key.Span.SequenceCompareTo(y.key.Span);
+        }
 
         public static async Task<TableMetaData> LoadFromFileAsync(string fileName)
         {
@@ -84,22 +105,22 @@ namespace TrimDB.Core.Storage.MetaData
             var data = memory.Span;
             var expectedLength = BinaryPrimitives.ReadInt32LittleEndian(data);
             data = data.Slice(sizeof(int));
-            if (data.Length / sizeof(long) != expectedLength)
-            {
-                throw new IndexOutOfRangeException($"Block index was {data.Length} but expected {expectedLength * sizeof(long)}");
-            }
 
             while (data.Length > 0)
             {
                 var location = BinaryPrimitives.ReadInt64LittleEndian(data);
                 data = data.Slice(sizeof(long));
-                metaData._blockEntries.Add(location);
+                var key = new byte[BinaryPrimitives.ReadInt32LittleEndian(data)];
+                data = data.Slice(sizeof(int));
+                data.Slice(0, key.Length).CopyTo(key);
+                data = data.Slice(key.Length);
+                metaData._blockEntries.Add((location, key));
             }
         }
 
-        public void AddBlockOffset(long blockOffset)
+        public void AddBlockOffset(long blockOffset, ReadOnlyMemory<byte> firstKey)
         {
-            _blockEntries.Add(blockOffset);
+            _blockEntries.Add((blockOffset, firstKey));
         }
 
         private static void ReadFilter(TableMetaData metaData, ReadOnlyMemory<byte> memory) => metaData._filter.LoadFromBlock(memory);
@@ -111,7 +132,7 @@ namespace TrimDB.Core.Storage.MetaData
             // Read first key
             var keyLength = BinaryPrimitives.ReadInt32LittleEndian(span);
             var keyBuffer = new byte[keyLength];
-            var tmpSpan = span.Slice(4, keyLength);
+            var tmpSpan = span.Slice(sizeof(int), keyLength);
             tmpSpan.CopyTo(keyBuffer);
             metaData.FirstKey = keyBuffer;
             span = span[(sizeof(int) + keyLength)..];
@@ -125,7 +146,7 @@ namespace TrimDB.Core.Storage.MetaData
 
         public int WriteBlockOffsets(PipeWriter pipeWriter)
         {
-            var sizeToWrite = _blockEntries.Count * sizeof(long) + sizeof(int);
+            var sizeToWrite = _blockEntries.Sum(be => be.firstKey.Length + sizeof(long) + sizeof(int)) + sizeof(int);
 
             var span = pipeWriter.GetSpan(sizeToWrite);
             var totalSpan = span[..sizeToWrite];
@@ -133,10 +154,14 @@ namespace TrimDB.Core.Storage.MetaData
             BinaryPrimitives.WriteInt32LittleEndian(span, _blockEntries.Count);
             span = span[sizeof(int)..];
 
-            foreach (var offset in _blockEntries)
+            foreach (var be in _blockEntries)
             {
-                BinaryPrimitives.WriteInt64LittleEndian(span, offset);
+                BinaryPrimitives.WriteInt64LittleEndian(span, be.offset);
                 span = span[sizeof(long)..];
+                BinaryPrimitives.WriteInt32LittleEndian(span, be.firstKey.Length);
+                span = span[sizeof(int)..];
+                be.firstKey.Span.CopyTo(span);
+                span = span[be.firstKey.Length..];
             }
 
             pipeWriter.Advance(sizeToWrite);
@@ -178,7 +203,7 @@ namespace TrimDB.Core.Storage.MetaData
 
         public int WriteStats(PipeWriter pipeWriter)
         {
-            var totalWritten = FirstKey.Length + sizeof(int) * 3 + LastKey.Length;
+            var totalWritten = FirstKey.Length + (sizeof(int) * 3) + LastKey.Length;
 
             var memory = pipeWriter.GetSpan(totalWritten);
             var totalSpan = memory[..totalWritten];

@@ -16,13 +16,14 @@ namespace TrimDB.Core.Storage.Layers
         private int _maxFileIndex = -1;
         private readonly BlockCache _blockCache;
 
-        public StorageLayer(string databaseFolder, int level, BlockCache blockCache)
+        public StorageLayer(string databaseFolder, int level, BlockCache blockCache, int targetFileSize)
         {
+            MaxFileSize = targetFileSize;
             _databaseFolder = databaseFolder;
             _level = level;
             _blockCache = blockCache;
 
-            var levelFiles = System.IO.Directory.GetFiles(_databaseFolder, "Level???_*.trim");
+            var levelFiles = System.IO.Directory.GetFiles(_databaseFolder, $"Level{level}_*.trim");
 
             _tableFiles = new TableFile[levelFiles.Length];
             _tableFileIndices = new int[levelFiles.Length];
@@ -45,8 +46,16 @@ namespace TrimDB.Core.Storage.Layers
             }
         }
 
+        public async Task LoadLayer()
+        {
+            foreach(var tf in _tableFiles)
+            {
+                await tf.LoadAsync();
+            }
+        }
+
         public abstract int MaxFilesAtLayer { get; }
-        public abstract int MaxFileSize { get; }
+        public int MaxFileSize { get; protected set; }
         public abstract int NumberOfTables { get; }
         public int Level => _level;
 

@@ -10,12 +10,10 @@ namespace TrimDB.Core.Storage.Layers
     {
         public override int MaxFilesAtLayer => 6;
 
-        public override int MaxFileSize => 1024 * 1024 * 1024;
-
         public override int NumberOfTables => _tableFiles.Length;
 
         public UnsortedStorageLayer(int level, string databaseFolder, BlockCache blockCache)
-            : base(databaseFolder, level, blockCache)
+            : base(databaseFolder, level, blockCache, 0)
         {
 
         }

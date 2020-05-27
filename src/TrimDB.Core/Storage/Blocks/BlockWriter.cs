@@ -18,6 +18,7 @@ namespace TrimDB.Core.Storage.Blocks
 
         public BlockWriter(IEnumerator<IMemoryItem> iterator, Filter filter)
         {
+            _firstKey = iterator.Current.Key.ToArray();
             _filter = filter;
             _iterator = iterator;
 

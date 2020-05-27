@@ -43,7 +43,9 @@ namespace TrimDB.Core.InMemory.SkipList64
         public byte GetHeight()
         {
             var randomNumber = Next();
-            var leadingZeros = System.Runtime.Intrinsics.X86.Lzcnt.LeadingZeroCount(randomNumber) + 1;
+
+            var leadingZeros = (uint)System.Numerics.BitOperations.LeadingZeroCount(randomNumber) + 1;
+
             var maxValue = Math.Min(_maxHeight, _currentHeight + 1);
 
             var height = (byte)Math.Min(leadingZeros, maxValue);

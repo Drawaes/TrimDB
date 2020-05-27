@@ -171,8 +171,7 @@ namespace TrimDB.Core.Storage.Filters
         {
             var uniq = _keys.Distinct().ToArray();
             var coll = (uniq.Count() - _keys.Count) / (double)_keys.Count;
-            Console.WriteLine($"We had {coll * 100}% keys smash into each other badly :) ");
-
+            
             LoadFromKeys(uniq);
             var sizeToSave = sizeof(byte) + sizeof(int) + sizeof(long) + _fingerPrints.Length;
             var span = pipeWriter.GetSpan(sizeToSave);

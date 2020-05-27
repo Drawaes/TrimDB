@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using TrimDB.Core.Hashing;
 using TrimDB.Core.InMemory.SkipList32;
+using TrimDB.Core.InMemory.SkipList64;
 using TrimDB.Core.Storage;
 using TrimDB.Core.Storage.Blocks;
 using TrimDB.Core.Storage.Blocks.AsyncCache;
@@ -21,8 +22,8 @@ namespace TrimDB.Core.Facts
         [Fact]
         public async Task WriteAndReadAsyncBlockFile()
         {
-            using var allocator = new NativeAllocator32(4096 * 10_000, 25);
-            var memoryTable = new SkipList32(allocator);
+            using var allocator = new NativeAllocator64(4096 * 20_000, 25);
+            var memoryTable = new SkipList64(allocator);
 
             var loadedWords = CommonData.Words;
             foreach (var word in loadedWords)
@@ -30,7 +31,7 @@ namespace TrimDB.Core.Facts
                 if (string.IsNullOrEmpty(word)) continue;
                 var utf8 = Encoding.UTF8.GetBytes(word);
                 var value = Encoding.UTF8.GetBytes($"VALUE={word}");
-                memoryTable.Put(utf8, value);
+                Assert.True(memoryTable.Put(utf8, value));
             }
 
             var tempPath = System.IO.Path.GetTempPath();
@@ -65,8 +66,8 @@ namespace TrimDB.Core.Facts
         [Fact]
         public async Task WriteAndReadFile()
         {
-            using var allocator = new NativeAllocator32(4096 * 10_000, 25);
-            var memoryTable = new SkipList32(allocator);
+            using var allocator = new NativeAllocator64(4096 * 10_000, 25);
+            var memoryTable = new SkipList64(allocator);
 
             var loadedWords = CommonData.Words;
             foreach (var word in loadedWords)

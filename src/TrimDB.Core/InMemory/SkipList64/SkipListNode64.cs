@@ -60,7 +60,7 @@ namespace TrimDB.Core.InMemory.SkipList64
             get
             {
                 ref var pointer = ref Unsafe.Add(ref Unsafe.As<byte, long>(ref MemoryMarshal.GetReference(_nodeMemory)), 1);
-                return (pointer & 0b1000_0000_0000_0000) > 0;
+                return pointer == -1;
             }
         }
         public bool IsAllocated => _nodeMemory.Length != 0;
@@ -69,7 +69,7 @@ namespace TrimDB.Core.InMemory.SkipList64
         public void SetDeleted()
         {
             ref var pointer = ref Unsafe.Add(ref Unsafe.As<byte, long>(ref MemoryMarshal.GetReference(_nodeMemory)), 1);
-            pointer |= 0b1000_0000_0000_0000_0000;
+            pointer |= -1;
 
         }
 

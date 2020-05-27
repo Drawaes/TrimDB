@@ -2,6 +2,7 @@
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net.NetworkInformation;
 using System.Runtime.CompilerServices;
@@ -16,16 +17,16 @@ namespace TrimDB.Core.Storage.Blocks.CachePrototype
     public class ProtoSharded : BlockCache
     {
         private ConcurrentDictionary<FileIdentifier, ProtoFile> _cache = new ConcurrentDictionary<FileIdentifier, ProtoFile>();
-        private ProtoLRUCache[] _lruCache = new ProtoLRUCache[4];
+        private ProtoLRUCache[] _lruCache = new ProtoLRUCache[16];
         private CompletionPortSafeHandle _completionPort;
         private System.Threading.Thread[] _threads = new System.Threading.Thread[Environment.ProcessorCount];
         private ConcurrentQueue<IntPtr> _overlappedStructs = new ConcurrentQueue<IntPtr>();
 
         public ProtoSharded(int maxBlocks)
         {
-            for(var i = 0; i < _lruCache.Length;i++)
+            for (var i = 0; i < _lruCache.Length; i++)
             {
-                _lruCache[i] = new ProtoLRUCache(maxBlocks / 4, _cache);
+                _lruCache[i] = new ProtoLRUCache(maxBlocks / 16, _cache);
             }
 
             _completionPort = CreateIoCompletionPort((IntPtr)(-1), IntPtr.Zero, UIntPtr.Zero, (uint)_threads.Length);
@@ -46,29 +47,36 @@ namespace TrimDB.Core.Storage.Blocks.CachePrototype
 
         private ProtoLRUCache GetCache(FileIdentifier id, int blockId)
         {
-            var bits = 0b0111 & HashCode.Combine(id.GetHashCode(), blockId);
-            var index = System.Runtime.Intrinsics.X86.Popcnt.PopCount((uint)bits);
+            var bits = 0b0111_1111_1111_1111 & HashCode.Combine(id.GetHashCode(), blockId);
+            var index = System.Numerics.BitOperations.PopCount((uint)bits);
             return _lruCache[index];
         }
 
         private unsafe void IOThreadLoop()
         {
-            while (true)
+            try
             {
-                if (!GetQueuedCompletionStatus(_completionPort, out var numBytesTransfered, out _, out var overlappedPtr, -1))
+                while (true)
                 {
-                    var error = Marshal.GetLastWin32Error();
-                    if (error == (int)Errors.NTError.ERROR_ABANDONED_WAIT_0)
+                    if (!GetQueuedCompletionStatus(_completionPort, out var numBytesTransfered, out _, out var overlappedPtr, -1))
                     {
-                        return;
+                        var error = Marshal.GetLastWin32Error();
+                        if (error == (int)Errors.NTError.ERROR_ABANDONED_WAIT_0)
+                        {
+                            return;
+                        }
+                        throw new NotImplementedException($"There was either an error with the completion port or an IO error to handle error code {error}");
                     }
-                    throw new NotImplementedException($"There was either an error with the completion port or an IO error to handle error code {error}");
-                }
-                var overlapped = Unsafe.AsRef<Files.OverlappedStruct>((void*)overlappedPtr);
+                    var overlapped = Unsafe.AsRef<Files.OverlappedStruct>((void*)overlappedPtr);
 
-                var id = new FileIdentifier(overlapped.LevelId, overlapped.FileId);
-                GetCache(id, overlapped.BlockId).CompleteRead(id, overlapped.BlockId);
-                _overlappedStructs.Enqueue((IntPtr)overlappedPtr);
+                    var id = new FileIdentifier(overlapped.LevelId, overlapped.FileId);
+                    GetCache(id, overlapped.BlockId).CompleteRead(id, overlapped.BlockId);
+                    _overlappedStructs.Enqueue((IntPtr)overlappedPtr);
+                }
+            }
+            catch
+            {
+                Debugger.Break();
             }
         }
 
@@ -84,7 +92,13 @@ namespace TrimDB.Core.Storage.Blocks.CachePrototype
 
         public override void RemoveFile(FileIdentifier id)
         {
-            throw new NotImplementedException();
+            // When we remove the file we need to be careful that we don't dispose the completion port
+            if (!_cache.TryGetValue(id, out var value))
+            {
+                return;
+            }
+
+            value.Dispose();
         }
     }
 }

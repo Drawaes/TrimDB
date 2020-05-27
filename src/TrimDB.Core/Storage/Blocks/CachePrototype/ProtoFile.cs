@@ -60,5 +60,9 @@ namespace TrimDB.Core.Storage.Blocks.CachePrototype
             ReadFile(_fileHandle, (void*)buffer, FileConsts.PageSize, out var readBytes, overLappedPointer);
         }
 
+        internal void Dispose()
+        {
+            _fileHandle.Dispose();
+        }
     }
 }

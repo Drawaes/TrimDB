@@ -90,45 +90,30 @@ namespace TrimDB.Core.Storage
 
         private async ValueTask<SearchResultValue> BinarySearchBlocks(ReadOnlyMemory<byte> key)
         {
-            var min = 0;
-            var max = _metaData.BlockCount - 1;
+            //var _testValue = new byte[] { 174, 109, 236, 27, 0, 0, 7, 0, 0, 0 };
+            //if (_testValue.AsSpan().SequenceCompareTo(key.Span) == 0) Debugger.Break();
 
-            do
+            var containingBlock = _metaData.FindContainingBlock(key);
+            if(containingBlock == -1) return new SearchResultValue() { Result = SearchResult.NotFound };
+
+            using var block = await GetKVBlock(containingBlock);
+            var result = block.TryFindKey(key.Span);
+            if (result == BlockReader.KeySearchResult.Found)
             {
-                var mid = (min + max) / 2;
-                using var block = await GetKVBlock(mid);
-                var result = block.TryFindKey(key.Span);
-                if (result == BlockReader.KeySearchResult.Found)
+                if (block.IsDeleted)
                 {
-                    if(block.IsDeleted)
-                    {
-                        return new SearchResultValue() { Result = SearchResult.Deleted, Value = default };
-                    }
-                    return new SearchResultValue() { Result = SearchResult.Found, Value = block.GetCurrentValue().ToArray() };
+                    return new SearchResultValue() { Result = SearchResult.Deleted, Value = default };
                 }
-                if (result == BlockReader.KeySearchResult.Before)
-                {
-                    max = mid - 1;
-                }
-                else if (result == BlockReader.KeySearchResult.After)
-                {
-                    min = mid + 1;
-                }
-            } while (min <= max);
-
-            return new SearchResultValue { Result = SearchResult.NotFound };
-
-
-            //else if (result == BlockReader.KeySearchResult.NotFound)
-            //{
-            //    return new SearchResultValue() { Result = SearchResult.NotFound };
-            //}
+                return new SearchResultValue() { Result = SearchResult.Found, Value = block.GetCurrentValue().ToArray() };
+            }
+            return new SearchResultValue() { Result = SearchResult.NotFound };
         }
 
         public IEnumerator<TableItem> GetEnumerator() => new TableItemEnumerator(this);
 
         internal void Dispose()
         {
+            _countDown.Signal();
             _countDown.Wait();
             _blockCache.RemoveFile(FileId);
         }

@@ -13,7 +13,7 @@ using TrimDB.Core.Storage.Layers;
 
 namespace TrimDB.Core
 {
-    public class TrimDatabase
+    public class TrimDatabase : IAsyncDisposable
     {
         private MemoryTable _skipList;
         private readonly Func<MemoryTable> _inMemoryFunc;
@@ -22,10 +22,10 @@ namespace TrimDB.Core
         private readonly IHashFunction _hasher = new MurmurHash3();
         private readonly SemaphoreSlim _skipListLock = new SemaphoreSlim(1);
         private readonly string _databaseFolder;
-        private readonly IOScheduler _ioScheduler;
+        private IOScheduler _ioScheduler;
         private readonly BlockCache _blockCache;
 
-        public TrimDatabase(Func<MemoryTable> inMemoryFunc, BlockCache blockCache, int levels, string databaseFolder)
+        public TrimDatabase(Func<MemoryTable> inMemoryFunc, BlockCache blockCache, int levels, string databaseFolder, int targetFileSizeL2)
         {
             _blockCache = blockCache;
             if (!System.IO.Directory.Exists(databaseFolder))
@@ -37,13 +37,25 @@ namespace TrimDB.Core
             _inMemoryFunc = inMemoryFunc;
 
             var unsorted = new UnsortedStorageLayer(1, _databaseFolder, _blockCache);
-            _ioScheduler = new IOScheduler(1, unsorted, this);
+
             _storageLayers.Add(unsorted);
             for (var i = 2; i <= levels; i++)
             {
-                _storageLayers.Add(new SortedStorageLayer(i, _databaseFolder, _blockCache));
+                _storageLayers.Add(new SortedStorageLayer(i, _databaseFolder, _blockCache, targetFileSizeL2));
             }
             _skipList = _inMemoryFunc();
+        }
+
+        public async Task LoadAsync(bool startWithoutMerges = false)
+        {
+            foreach (var sl in _storageLayers)
+            {
+                await sl.LoadLayer().ConfigureAwait(false);
+            }
+            if (!startWithoutMerges)
+            {
+                _ioScheduler = new IOScheduler(1, (UnsortedStorageLayer)_storageLayers[0], this);
+            }
         }
 
         internal List<StorageLayer> StorageLayers => _storageLayers;
@@ -114,11 +126,11 @@ namespace TrimDB.Core
         internal async ValueTask<SearchResult> DoesKeyExistBelowLevel(ReadOnlyMemory<byte> key, int levelId)
         {
             var keyHash = _hasher.ComputeHash64(key.Span);
-            for(var i = levelId; i < _storageLayers.Count; i++)
+            for (var i = levelId; i < _storageLayers.Count; i++)
             {
                 var storage = _storageLayers[i];
                 var result = await storage.GetAsync(key, keyHash);
-                if(result.Result == SearchResult.Deleted || result.Result == SearchResult.Found)
+                if (result.Result == SearchResult.Deleted || result.Result == SearchResult.Found)
                 {
                     return result.Result;
                 }
@@ -163,6 +175,24 @@ namespace TrimDB.Core
             {
                 _skipListLock.Release();
             }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (_ioScheduler == null) return;
+            // Set the current in memory database to null
+            await _skipListLock.WaitAsync();
+            try
+            {
+                MemoryTable old = null;
+                old = Interlocked.Exchange(ref _skipList, old);
+                await _ioScheduler.ScheduleSave(old);
+            }
+            finally
+            {
+                _skipListLock.Release();
+            }
+            await _ioScheduler.DisposeAsync();
         }
     }
 }

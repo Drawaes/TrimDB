@@ -67,6 +67,7 @@ namespace TrimDB.Core.Storage.Blocks.CachePrototype
                         var lastNode = _lruList.Last;
                         if (lastNode == null)
                         {
+                            Console.WriteLine("We ran out of space in the blockcache");
                             throw new NotImplementedException("We have no space at the inn, we need to figure out what we do here so we don't deadlock");
                         }
                         else

@@ -17,7 +17,7 @@ namespace TrimDB.Core.Storage
 
         public TableFileMerger(IAsyncEnumerator<IMemoryItem>[] memoryItems)
         {
-            _initialList = _memoryItems;
+            _initialList = memoryItems;
             _memoryItems = memoryItems;
             _currentIterator = _memoryItems[0];
         }

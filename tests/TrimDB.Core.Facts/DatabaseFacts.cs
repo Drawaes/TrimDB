@@ -14,14 +14,16 @@ namespace TrimDB.Core.Facts
         public async Task TestSkipListOverflow()
         {
             var loadedWords = CommonData.Words;
-            var folder = "c:\\code\\trimdb\\Database";
+            var folder = "D:\\Database";
             foreach (var f in System.IO.Directory.GetFiles(folder))
             {
                 System.IO.File.Delete(f);
             }
 
             using var blocks = new MMapBlockCache();
-            var db = new TrimDatabase(() => new SkipList32(new NativeAllocator32(4096 * 1024, 25)), blocks,  2, folder);
+            var db = new TrimDatabase(() => new SkipList32(new NativeAllocator32(4096 * 1024, 25)), blocks,  2, folder, 8 * 1024 * 1024);
+
+            await db.LoadAsync();
 
             foreach (var word in loadedWords)
             {
