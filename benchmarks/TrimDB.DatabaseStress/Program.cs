@@ -27,15 +27,74 @@ namespace TrimDB.DatabaseStress
         {
             var dbFolder = "D:\\stress";
 
+
             await WriteDB(dbFolder);
 
-            await CheckGetKeys(dbFolder);
+            //await CheckGetKeys(dbFolder);
 
             //await CheckGetKeysSingleThread(dbFolder);
 
             //await CheckLayer(dbFolder, 2);
 
             //await SpeedTestSingleThreadedSearchFile();
+        }
+
+        private static async Task PracticeL2ToL3Merge(string dbFolder)
+        {
+            using var blockStore = new ProtoSharded(2_560);
+
+            var l2 = new SortedStorageLayer(2, dbFolder, blockStore, 0, 0);
+
+            var l3 = new SortedStorageLayer(3, dbFolder, blockStore, 0, 0);
+            MergeInFile(l2, l3);
+
+        }
+
+        private static void MergeInFile(SortedStorageLayer l2, SortedStorageLayer l3)
+        {
+
+            if (l3.NumberOfTables == 0)
+            {
+                Console.WriteLine("Moved table down with no merge");
+                // Move table down one level
+                return;
+            }
+            var overlapCounts = new int[l2.NumberOfTables];
+            for (var i = 0; i < l2.GetTables().Length; i++)
+            {
+                var t = l2.GetTables()[i];
+
+                // Check if there is overlap
+                var overlapCount = 0;
+
+                foreach (var l3t in l3.GetTables())
+                {
+                    if (t.LastKey.Span.SequenceCompareTo(l3t.FirstKey.Span) < 0)
+                    {
+                        continue;
+                    }
+                    if (t.FirstKey.Span.SequenceCompareTo(l3t.LastKey.Span) > 0)
+                    {
+                        continue;
+                    }
+                    overlapCount++;
+                    break;
+                }
+
+                if (overlapCount == 0)
+                {
+                    // Move table down one level
+                    Console.WriteLine("Moved table down with no merge");
+                    return;
+                }
+                overlapCounts[i] = overlapCount;
+            }
+
+            var min = overlapCounts.Min();
+            var indexOfMin = overlapCounts.Select((value, index) => (value, index)).First(i => i.value == min).index;
+
+            // Found with min overlap so merge it
+            return;
         }
 
         private static async Task SpeedTestSingleThreadedSearchFile()
@@ -70,10 +129,10 @@ namespace TrimDB.DatabaseStress
 
         private static async Task CheckGetKeysSingleThread(string dbFolder)
         {
-            using var blockStore = new Core.Storage.Blocks.CachePrototype.ProtoSharded(2_560);
-            await using var db = new TrimDatabase(() => new SkipList32(new NativeAllocator32(4096 * 1024, 25)), blockStore, 5, dbFolder, 0);
+            var dbOptions = new TrimDatabaseOptions() { DatabaseFolder = dbFolder, OpenReadOnly = true };
 
-            await db.LoadAsync(startWithoutMerges: true);
+            await using var db = new TrimDatabase(dbOptions);
+            await db.LoadAsync();
 
             var numberOfThreads = Environment.ProcessorCount;
             var seed = 7722;
@@ -98,10 +157,10 @@ namespace TrimDB.DatabaseStress
 
         private static async Task CheckGetKeys(string dbFolder)
         {
-            using var blockStore = new Core.Storage.Blocks.CachePrototype.ProtoSharded(2_560);
-            await using var db = new TrimDatabase(() => new SkipList32(new NativeAllocator32(4096 * 1024, 25)), blockStore, 5, dbFolder, 0);
+            var dbOptions = new TrimDatabaseOptions() { DatabaseFolder = dbFolder, OpenReadOnly = true };
+            await using var db = new TrimDatabase(dbOptions);
 
-            await db.LoadAsync(startWithoutMerges: true);
+            await db.LoadAsync();
 
             var numberOfThreads = Environment.ProcessorCount;
 
@@ -150,9 +209,9 @@ namespace TrimDB.DatabaseStress
 
         private static async Task CheckLayer(string dbFolder, int level)
         {
-            using var blockStore = new Core.Storage.Blocks.CachePrototype.ProtoSharded(2_560);
+            using var blockStore = new ProtoSharded(2_560);
 
-            var sortedLayer = new SortedStorageLayer(level, dbFolder, blockStore, 0);
+            var sortedLayer = new SortedStorageLayer(level, dbFolder, blockStore, 1024 * 1024 * 6, 0);
 
             await sortedLayer.LoadLayer();
 
@@ -193,9 +252,8 @@ namespace TrimDB.DatabaseStress
 
             System.IO.Directory.CreateDirectory(dbFolder);
 
-            using var blockStore = new Core.Storage.Blocks.CachePrototype.ProtoSharded(2_560);
-
-            await using var db = new TrimDatabase(() => new SkipList32(new NativeAllocator32(4096 * 1024, 25)), blockStore, 5, dbFolder, 64 * 1024 * 1024);
+            var dbOptions = new TrimDatabaseOptions() { DatabaseFolder = dbFolder };
+            await using var db = new TrimDatabase(dbOptions);
 
             await db.LoadAsync();
 
@@ -221,15 +279,15 @@ namespace TrimDB.DatabaseStress
 
             Console.WriteLine($"Total number of keys written {_keysPerThread * numberOfThreads}");
             var totalDatasize = _keysPerThread * numberOfThreads * (_keySize + _valueSize);
-            Console.WriteLine($"Total data set {totalDatasize / 1024 / 1204 }mb");
+            Console.WriteLine($"Total data set {totalDatasize / 1024 / 1024 }mb");
 
             Console.WriteLine("Waiting for db to shutdown");
 
-            for (var i = 0; i < 10; i++)
-            {
-                Console.WriteLine("Waiting for the merges to finish BRB");
-                await Task.Delay(TimeSpan.FromSeconds(10));
-            }
+            //for (var i = 0; i < 10; i++)
+            //{
+            //    Console.WriteLine("Waiting for the merges to finish BRB");
+            //    await Task.Delay(TimeSpan.FromSeconds(10));
+            //}
         }
 
         private static async Task WriteToDB(short threadId, KeyValueGenerator generator, int numberOfIterations, TrimDatabase trimDB)

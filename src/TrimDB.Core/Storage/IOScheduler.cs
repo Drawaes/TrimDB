@@ -28,7 +28,7 @@ namespace TrimDB.Core.Storage
         {
             _storageLayer = storageLayer;
             _database = database;
-            _sortedStrategy = (sl) => false;
+            _sortedStrategy = (sl) => sl.NumberOfTables > (sl.MaxFilesAtLayer * 0.8);
             _unsortedStrategy = (sl) => sl.NumberOfTables > (sl.MaxFilesAtLayer * 0.8);
             _channel = Channel.CreateBounded<MemoryTable>(new BoundedChannelOptions(maxSkiplistBacklog));
             _writerTask = WriteInMemoryTable();
@@ -54,34 +54,39 @@ namespace TrimDB.Core.Storage
             {
                 while (!_token.IsCancellationRequested)
                 {
-                    bool mergeHappened = false;
-                    foreach (var sl in _database.StorageLayers)
+                    while (true)
                     {
-                        switch (sl)
+                        var mergeHappened = false;
+                        for (var i = _database.StorageLayers.Count - 2; i >= 0; i--)
                         {
-                            case SortedStorageLayer sortedLayer:
-                                if (_sortedStrategy(sortedLayer))
-                                {
-                                    mergeHappened = true;
-                                    throw new NotImplementedException("We should merge here");
-                                }
-                                break;
+                            var sl = _database.StorageLayers[i];
+                            switch (sl)
+                            {
+                                case SortedStorageLayer sortedLayer:
+                                    if (_sortedStrategy(sortedLayer))
+                                    {
+                                        mergeHappened = true;
+                                        await MergeSortedLayer(sortedLayer);
+                                    }
+                                    break;
 
-                            case UnsortedStorageLayer unsorted:
-                                if (_unsortedStrategy(unsorted))
-                                {
-                                    mergeHappened = true;
-                                    await MergeUnsortedLayer(unsorted);
-                                }
-                                break;
+                                case UnsortedStorageLayer unsorted:
+                                    if (_unsortedStrategy(unsorted))
+                                    {
+                                        mergeHappened = true;
+                                        await MergeUnsortedLayer(unsorted);
+                                    }
+                                    break;
 
-                            default:
-                                throw new InvalidOperationException("We have a type of storage layer we don't know what to do with");
+                                default:
+                                    throw new InvalidOperationException("We have a type of storage layer we don't know what to do with");
+                            }
                         }
-                    }
-                    if (!mergeHappened)
-                    {
-                        await Task.Delay(TimeSpan.FromMilliseconds(50), _token.Token);
+                        if (!mergeHappened)
+                        {
+                            await Task.Delay(TimeSpan.FromMilliseconds(50), _token.Token);
+                            break;
+                        }
                     }
                 }
             }
@@ -89,6 +94,92 @@ namespace TrimDB.Core.Storage
             {
                 Console.WriteLine($"Exception occured {ex}");
             }
+        }
+
+        private async Task MergeSortedLayer(SortedStorageLayer sortedStorage)
+        {
+            var layerBelow = _database.StorageLayers[sortedStorage.Level];
+            if (layerBelow.NumberOfTables == 0)
+            {
+                var file = sortedStorage.GetTables()[0];
+                await MoveTableToLowerLevel(sortedStorage, layerBelow, file);
+
+                return;
+            }
+
+            var overlapCounts = new int[sortedStorage.NumberOfTables];
+            for (var i = 0; i < sortedStorage.GetTables().Length; i++)
+            {
+                var t = sortedStorage.GetTables()[i];
+
+                // Check if there is overlap
+                var overlapCount = 0;
+
+                foreach (var l3t in layerBelow.GetTables())
+                {
+                    if (t.LastKey.Span.SequenceCompareTo(l3t.FirstKey.Span) < 0)
+                    {
+                        continue;
+                    }
+                    if (t.FirstKey.Span.SequenceCompareTo(l3t.LastKey.Span) > 0)
+                    {
+                        continue;
+                    }
+                    overlapCount++;
+                }
+
+                if (overlapCount == 0)
+                {
+                    // Move table down one level
+                    await MoveTableToLowerLevel(sortedStorage, layerBelow, t);
+                    return;
+                }
+                overlapCounts[i] = overlapCount;
+            }
+
+            var min = overlapCounts.Min();
+            var indexOfMin = overlapCounts.Select((value, index) => (value, index)).First(i => i.value == min).index;
+            var upperTable = sortedStorage.GetTables()[indexOfMin];
+            var overlapping = GetOverlappingTables(upperTable, layerBelow);
+            overlapping.Insert(0, upperTable);
+
+            Console.WriteLine($"Merging from {sortedStorage.Level}");
+            var sw = Stopwatch.StartNew();
+
+            await using (var merger = new TableFileMerger(overlapping.Select(ol => ol.GetAsyncEnumerator()).ToArray()))
+            {
+                // Begin writing out to disk
+                var writer = new TableFileMergeWriter(_database, layerBelow, _database.BlockCache, sortedStorage.Level);
+                await writer.WriteFromMerger(merger);
+
+                layerBelow.AddAndRemoveTableFiles(writer.NewTableFiles, overlapping);
+                sortedStorage.RemoveTable(upperTable);
+            }
+            Console.WriteLine($"Merge for level {sortedStorage.Level} took {sw.ElapsedMilliseconds}ms");
+            foreach (var file in overlapping)
+            {
+                file.Dispose();
+                System.IO.File.Delete(file.FileName);
+            }
+
+            // Found with min overlap so merge it
+            return;
+        }
+
+        private async Task MoveTableToLowerLevel(SortedStorageLayer sortedStorage, StorageLayer layerBelow, TableFile file)
+        {
+            var newFilename = layerBelow.GetNextFileName();
+            System.IO.File.Copy(file.FileName, newFilename);
+            var tableFile = new TableFile(newFilename, _database.BlockCache);
+            await tableFile.LoadAsync();
+            layerBelow.AddTableFile(tableFile);
+            sortedStorage.RemoveTable(file);
+
+            file.Dispose();
+            System.IO.File.Delete(file.FileName);
+
+            Console.WriteLine("Moved table down with no merge");
+            // Move table down one level
         }
 
         private async Task MergeUnsortedLayer(UnsortedStorageLayer unsortedLayer)

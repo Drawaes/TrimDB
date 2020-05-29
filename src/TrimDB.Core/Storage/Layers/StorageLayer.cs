@@ -10,7 +10,7 @@ namespace TrimDB.Core.Storage.Layers
     public abstract class StorageLayer
     {
         private readonly string _databaseFolder;
-        private readonly int _level;
+        protected readonly int _level;
         protected TableFile[] _tableFiles;
         protected int[] _tableFileIndices;
         private int _maxFileIndex = -1;
@@ -59,7 +59,7 @@ namespace TrimDB.Core.Storage.Layers
         public abstract int NumberOfTables { get; }
         public int Level => _level;
 
-        internal TableFile[] GetTables() => _tableFiles;
+        public TableFile[] GetTables() => _tableFiles;
 
         public abstract ValueTask<SearchResultValue> GetAsync(ReadOnlyMemory<byte> key, ulong hash);
 

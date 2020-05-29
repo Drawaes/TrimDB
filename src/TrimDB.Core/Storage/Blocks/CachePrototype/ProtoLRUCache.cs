@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 
 namespace TrimDB.Core.Storage.Blocks.CachePrototype
 {
-    internal class ProtoLRUCache:IDisposable
+    internal class ProtoLRUCache : IDisposable
     {
         private readonly LinkedList<ProtoBlock> _lruList = new LinkedList<ProtoBlock>();
         private readonly Dictionary<BlockIdentifier, LinkedListNode<ProtoBlock>> _lookup = new Dictionary<BlockIdentifier, LinkedListNode<ProtoBlock>>();
@@ -99,7 +99,7 @@ namespace TrimDB.Core.Storage.Blocks.CachePrototype
         internal void CompleteRead(FileIdentifier id, int blockId)
         {
             LinkedListNode<ProtoBlock> node;
-            lock(_lock)
+            lock (_lock)
             {
                 node = _lookup[new BlockIdentifier() { BlockId = (uint)blockId, FileId = (ushort)id.FileId, LevelId = (ushort)id.Level }];
             }

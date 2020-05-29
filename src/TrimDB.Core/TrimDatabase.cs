@@ -16,7 +16,6 @@ namespace TrimDB.Core
     public class TrimDatabase : IAsyncDisposable
     {
         private MemoryTable _skipList;
-        private readonly Func<MemoryTable> _inMemoryFunc;
         private List<MemoryTable> _oldInMemoryTables = new List<MemoryTable>();
         private readonly List<StorageLayer> _storageLayers = new List<StorageLayer>();
         private readonly IHashFunction _hasher = new MurmurHash3();
@@ -24,35 +23,41 @@ namespace TrimDB.Core
         private readonly string _databaseFolder;
         private IOScheduler _ioScheduler;
         private readonly BlockCache _blockCache;
+        private TrimDatabaseOptions _options;
 
-        public TrimDatabase(Func<MemoryTable> inMemoryFunc, BlockCache blockCache, int levels, string databaseFolder, int targetFileSizeL2)
+        public TrimDatabase(TrimDatabaseOptions options)
         {
-            _blockCache = blockCache;
-            if (!System.IO.Directory.Exists(databaseFolder))
+            _blockCache = options.BlockCache();
+            _options = options;
+            if (!System.IO.Directory.Exists(options.DatabaseFolder))
             {
-                System.IO.Directory.CreateDirectory(databaseFolder);
+                System.IO.Directory.CreateDirectory(options.DatabaseFolder);
             }
 
-            _databaseFolder = databaseFolder;
-            _inMemoryFunc = inMemoryFunc;
+            _databaseFolder = options.DatabaseFolder;
 
             var unsorted = new UnsortedStorageLayer(1, _databaseFolder, _blockCache);
 
             _storageLayers.Add(unsorted);
-            for (var i = 2; i <= levels; i++)
+
+            for (var i = 2; i <= _options.Levels; i++)
             {
-                _storageLayers.Add(new SortedStorageLayer(i, _databaseFolder, _blockCache, targetFileSizeL2));
+                var filesAtLevel = (int)Math.Ceiling(_options.FirstLevelMaxFileCount * Math.Pow(_options.FirstLevelMaxFileCount, i - 2));
+                _storageLayers.Add(new SortedStorageLayer(i, _databaseFolder, _blockCache, _options.FileSize, filesAtLevel));
             }
-            _skipList = _inMemoryFunc();
+            if (!_options.OpenReadOnly)
+            {
+                _skipList = _options.MemoryTable();
+            }
         }
 
-        public async Task LoadAsync(bool startWithoutMerges = false)
+        public async Task LoadAsync()
         {
             foreach (var sl in _storageLayers)
             {
                 await sl.LoadLayer().ConfigureAwait(false);
             }
-            if (!startWithoutMerges)
+            if (!_options.OpenReadOnly)
             {
                 _ioScheduler = new IOScheduler(1, (UnsortedStorageLayer)_storageLayers[0], this);
             }
@@ -167,7 +172,7 @@ namespace TrimDB.Core
                 {
                     var list = new List<MemoryTable>(_oldInMemoryTables) { sl };
                     Interlocked.Exchange(ref _oldInMemoryTables, list);
-                    Interlocked.Exchange(ref _skipList, _inMemoryFunc());
+                    Interlocked.Exchange(ref _skipList, _options.MemoryTable());
                     await _ioScheduler.ScheduleSave(sl);
                 }
             }

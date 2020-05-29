@@ -21,7 +21,8 @@ namespace TrimDB.Core.Facts
             }
 
             using var blocks = new MMapBlockCache();
-            var db = new TrimDatabase(() => new SkipList32(new NativeAllocator32(4096 * 1024, 25)), blocks,  2, folder, 8 * 1024 * 1024);
+            var dbOptions = new TrimDatabaseOptions() { DatabaseFolder = folder };
+            var db = new TrimDatabase(dbOptions);
 
             await db.LoadAsync();
 

@@ -8,12 +8,13 @@ namespace TrimDB.Core.Storage.Layers
 {
     public class SortedStorageLayer : StorageLayer
     {
-        public SortedStorageLayer(int level, string databaseFolder, BlockCache blockCache, int targetFileSize)
+        public SortedStorageLayer(int level, string databaseFolder, BlockCache blockCache, int targetFileSize, int maxFiles)
             : base(databaseFolder, level, blockCache, targetFileSize)
         {
+            MaxFilesAtLayer = maxFiles;
         }
 
-        public override int MaxFilesAtLayer => (int)(Math.Pow(10, Level) * 2);
+        public override int MaxFilesAtLayer { get; }
                 
         public override int NumberOfTables => _tableFiles.Length;
 

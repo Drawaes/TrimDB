@@ -40,7 +40,7 @@ namespace TrimDB.Core.Storage
 
             var iterator = skipList.GetEnumerator();
             if (!iterator.MoveNext()) throw new ArgumentOutOfRangeException("Empty iterator nothing to save");
-            
+
 
             var itemCount = 0;
 
@@ -75,7 +75,7 @@ namespace TrimDB.Core.Storage
         private void WriteBlocks(PipeWriter pipeWriter, IEnumerator<IMemoryItem> iterator, ref int counter)
         {
             using var blockWriter = new BlockWriter(iterator, _metaData.Filter);
-            
+
             while (blockWriter.MoreToWrite)
             {
                 var span = pipeWriter.GetSpan(FileConsts.PageSize);
@@ -83,8 +83,6 @@ namespace TrimDB.Core.Storage
                 _metaData.AddBlockOffset(_metaData.BlockCount * FileConsts.PageSize, iterator.Current.Key.ToArray());
                 blockWriter.WriteBlock(span);
                 pipeWriter.Advance(FileConsts.PageSize);
-                
-
             }
             counter = blockWriter.Count;
             _metaData.FirstKey = blockWriter.FirstKey;
