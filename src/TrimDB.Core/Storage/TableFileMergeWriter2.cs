@@ -18,7 +18,7 @@ using TrimDB.Core.Storage.MetaData;
 
 namespace TrimDB.Core.Storage
 {
-    public class TableFileMergeWriter
+    public class TableFileMergeWriter2
     {
         private readonly StorageLayer _layer;
         private readonly BlockCache _blockCache;
@@ -28,12 +28,12 @@ namespace TrimDB.Core.Storage
         private Stream _fileStream;
         private PipeWriter _filePipe;
         private long _currentFileSize = 0;
-        private TableMetaData _metaData = new TableMetaData(0, true);
+        private TableMetaData _metaData = new TableMetaData(0, false);
         //private TrimDatabase _database;
         private int _lastTableKeyCount = 0;
         private bool _loadNewFiles;
 
-        public TableFileMergeWriter(StorageLayer layer, BlockCache blockCache, bool loadNewFiles = true)
+        public TableFileMergeWriter2(StorageLayer layer, BlockCache blockCache, bool loadNewFiles = true)
         {
             _loadNewFiles = loadNewFiles;
             //_database = database;
@@ -49,7 +49,7 @@ namespace TrimDB.Core.Storage
             _fileStream = File.OpenWrite(_fileName);
             _filePipe = PipeWriter.Create(_fileStream);
             _currentFileSize = 0;
-            _metaData = new TableMetaData(_lastTableKeyCount, true);
+            _metaData = new TableMetaData(_lastTableKeyCount, false);
         }
 
         private async Task CloseOffCurrentTable()

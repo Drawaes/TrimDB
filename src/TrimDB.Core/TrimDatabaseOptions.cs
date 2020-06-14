@@ -22,5 +22,7 @@ namespace TrimDB.Core
         public int FileSize { get; set; } = 1024 * 1024 * 16;
         public bool OpenReadOnly { get; set; }
 
+        public bool DisableMerging { get; set; }
+
     }
 }

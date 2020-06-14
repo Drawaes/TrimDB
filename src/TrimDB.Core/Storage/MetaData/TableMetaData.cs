@@ -18,13 +18,18 @@ namespace TrimDB.Core.Storage.MetaData
     {
         private List<TableOfContentsEntry> _tocEntries = new List<TableOfContentsEntry>();
         private List<(long offset, ReadOnlyMemory<byte> firstKey)> _blockEntries = new List<(long, ReadOnlyMemory<byte>)>();
-        private Filter _filter = new XorFilter();
+        private Filter _filter;
 
         public int BlockCount => _blockEntries.Count;
         public ReadOnlyMemory<byte> FirstKey { get; set; }
         public ReadOnlyMemory<byte> LastKey { get; set; }
         public Filter Filter => _filter;
         public int Count { get; set; }
+
+        public TableMetaData(int approxSize, bool useMurMur)
+        {
+            _filter = new XorFilter(approxSize, useMurMur);
+        }
 
         public void AddTableEntry(long offset, int length, TableOfContentsEntryType entryType) => _tocEntries.Add(new TableOfContentsEntry() { EntryType = entryType, Length = length, Offset = offset });
 
@@ -51,7 +56,7 @@ namespace TrimDB.Core.Storage.MetaData
         public static async Task<TableMetaData> LoadFromFileAsync(string fileName)
         {
             await using var fs = new FileStream(fileName, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var metaData = new TableMetaData();
+            var metaData = new TableMetaData(0, true);
 
             fs.Seek(-FileConsts.PageSize, SeekOrigin.End);
             using (var mem = MemoryPool<byte>.Shared.Rent(FileConsts.PageSize))

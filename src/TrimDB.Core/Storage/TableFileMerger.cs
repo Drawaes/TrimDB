@@ -21,7 +21,7 @@ namespace TrimDB.Core.Storage
             _memoryItems = memoryItems;
             _currentIterator = _memoryItems[0];
         }
-
+                
         public IMemoryItem Current => _currentIterator.Current;
 
         public async ValueTask<bool> MoveNextAsync()

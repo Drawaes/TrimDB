@@ -32,7 +32,14 @@ namespace TrimDB.Core.Storage
             _unsortedStrategy = (sl) => sl.NumberOfTables > (sl.MaxFilesAtLayer * 0.8);
             _channel = Channel.CreateBounded<MemoryTable>(new BoundedChannelOptions(maxSkiplistBacklog));
             _writerTask = WriteInMemoryTable();
-            _mergeTask = CheckForMerge();
+            if (database.Options.DisableMerging)
+            {
+                _mergeTask = Task.CompletedTask;
+            }
+            else
+            {
+                _mergeTask = CheckForMerge();
+            }
         }
 
         public async ValueTask DisposeAsync()
@@ -149,7 +156,7 @@ namespace TrimDB.Core.Storage
             await using (var merger = new TableFileMerger(overlapping.Select(ol => ol.GetAsyncEnumerator()).ToArray()))
             {
                 // Begin writing out to disk
-                var writer = new TableFileMergeWriter(_database, layerBelow, _database.BlockCache, sortedStorage.Level);
+                var writer = new TableFileMergeWriter(layerBelow, _database.BlockCache);
                 await writer.WriteFromMerger(merger);
 
                 layerBelow.AddAndRemoveTableFiles(writer.NewTableFiles, overlapping);
@@ -202,7 +209,7 @@ namespace TrimDB.Core.Storage
             await using (var merger = new TableFileMerger(overlapped.Select(ol => ol.GetAsyncEnumerator()).ToArray()))
             {
                 // Begin writing out to disk
-                var writer = new TableFileMergeWriter(_database, nextLayer, _database.BlockCache, unsortedLayer.Level);
+                var writer = new TableFileMergeWriter(nextLayer, _database.BlockCache);
                 await writer.WriteFromMerger(merger);
 
                 nextLayer.AddAndRemoveTableFiles(writer.NewTableFiles, overlapped);

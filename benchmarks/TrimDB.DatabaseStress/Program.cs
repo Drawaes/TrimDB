@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using BenchmarkDotNet.Running;
 using FluentAssertions;
 using Microsoft.VisualBasic.CompilerServices;
 using TrimDB.Core;
@@ -21,22 +23,76 @@ namespace TrimDB.DatabaseStress
     {
         private static readonly int _keySize = 10;
         private static readonly int _valueSize = 100;
-        private static readonly int _keysPerThread = 100_000;
+        private static readonly int _keysPerThread = 500_000;
 
         static async Task Main(string[] args)
         {
+            //var merge = new MergeBenchmark();
+            //merge.GlobalSetup();
+            //merge.IterationSetup();
+            //await merge.MergeFiles();
+
+            var summary = BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
+            return;
+
             var dbFolder = "D:\\stress";
+            var outputFolder = "D:\\stressoutput";
+
+            Directory.Delete(outputFolder, true);
+            Directory.CreateDirectory(outputFolder);
+
+            var dbOptions = new TrimDatabaseOptions();
+
+            using var blockstore = dbOptions.BlockCache();
+            var filenames = Directory.GetFiles(dbFolder);
+            var files = new TableFile[filenames.Length];
+
+            for (var i = 0; i < files.Length; i++)
+            {
+                var tf = new TableFile(filenames[i], blockstore);
+                await tf.LoadAsync();
+                files[i] = tf;
+            }
+
+            var merger = new TableFileMerger(files.Select(f => f.GetAsyncEnumerator()).ToArray());
+            var storageLayer = new SortedStorageLayer(5, dbFolder, blockstore, 10 * 1024 * 1024, 100);
+
+            var mWriter = new TableFileMergeWriter(storageLayer, blockstore);
+
+            await mWriter.WriteFromMerger(merger);
+        }
+
+        //Directory.Delete(dbFolder, true);
+
+        //Directory.CreateDirectory(dbFolder);
+
+        //foreach(var f in Directory.GetFiles("D:\\stressbak", "*.*"))
+        //{
+        //    File.Copy(f, Path.Combine(dbFolder, Path.GetFileName(f)));
+        //}
+
+        //var sw = Stopwatch.StartNew();
+        //await WriteDB(dbFolder, disableMerging: false);
+        ////await MergeTest(dbFolder);
+
+        //sw.Stop();
+        //Console.WriteLine($"Total time taken was {sw.ElapsedMilliseconds}ms");
+
+        //await CheckGetKeys(dbFolder);
+
+        //await CheckGetKeysSingleThread(dbFolder);
+
+        //await CheckLayer(dbFolder, 2);
+
+        //await SpeedTestSingleThreadedSearchFile();
 
 
-            await WriteDB(dbFolder);
+        private static async Task MergeTest(string dbFolder)
+        {
+            var dbOptions = new TrimDatabaseOptions() { DatabaseFolder = dbFolder };
+            await using var db = new TrimDatabase(dbOptions);
 
-            //await CheckGetKeys(dbFolder);
-
-            //await CheckGetKeysSingleThread(dbFolder);
-
-            //await CheckLayer(dbFolder, 2);
-
-            //await SpeedTestSingleThreadedSearchFile();
+            await db.LoadAsync();
         }
 
         private static async Task PracticeL2ToL3Merge(string dbFolder)
@@ -246,13 +302,9 @@ namespace TrimDB.DatabaseStress
             }
         }
 
-        private static async Task WriteDB(string dbFolder)
+        private static async Task WriteDB(string dbFolder, bool disableMerging)
         {
-            System.IO.Directory.Delete(dbFolder, true);
-
-            System.IO.Directory.CreateDirectory(dbFolder);
-
-            var dbOptions = new TrimDatabaseOptions() { DatabaseFolder = dbFolder };
+            var dbOptions = new TrimDatabaseOptions() { DatabaseFolder = dbFolder, DisableMerging = disableMerging };
             await using var db = new TrimDatabase(dbOptions);
 
             await db.LoadAsync();

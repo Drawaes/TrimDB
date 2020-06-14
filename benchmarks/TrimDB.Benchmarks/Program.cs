@@ -18,26 +18,26 @@ namespace TrimDB.Benchmarks
     {
         public static async Task Main(string[] args)
         {
-            //var summary = BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
-            //return;
+            var summary = BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
+            return;
 
-            Console.WriteLine("Are you ready?");
-            Console.ReadLine();
+            //Console.WriteLine("Are you ready?");
+            //Console.ReadLine();
 
-            Console.WriteLine("Started");
-            var loadedWords = await File.ReadAllLinesAsync("words.txt");
+            //Console.WriteLine("Started");
+            //var loadedWords = await File.ReadAllLinesAsync("words.txt");
 
-            var wordSpans = loadedWords.Select(w => Encoding.UTF8.GetBytes(w)).ToArray();
+            //var wordSpans = loadedWords.Select(w => Encoding.UTF8.GetBytes(w)).ToArray();
 
-            var tempPath = Path.GetTempPath();
-            var fileName = Path.Combine(tempPath, "Level1_1.trim");
+            //var tempPath = Path.GetTempPath();
+            //var fileName = Path.Combine(tempPath, "Level1_1.trim");
 
 
-            var sw = Stopwatch.StartNew();
+            //var sw = Stopwatch.StartNew();
 
-            await WriteAndReadAsyncBlockFile(fileName, wordSpans);
+            //await WriteAndReadAsyncBlockFile(fileName, wordSpans);
 
-            Console.WriteLine($"This took {sw.ElapsedMilliseconds}ms");
+            //Console.WriteLine($"This took {sw.ElapsedMilliseconds}ms");
 
 
         }

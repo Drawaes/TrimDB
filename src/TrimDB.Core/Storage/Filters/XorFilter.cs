@@ -22,8 +22,22 @@ namespace TrimDB.Core.Storage.Filters
         private int _blockLength;
         private long _seed;
         private byte[] _fingerPrints;
-        private readonly List<long> _keys = new List<long>();
+        private readonly List<long> _keys;
         private readonly MurmurHash3 _hash = new MurmurHash3();
+        private readonly bool _useMurMur;
+
+        public XorFilter(int approxSize, bool useMurMur)
+        {
+            _useMurMur = useMurMur;
+            if (approxSize < 1)
+            {
+                _keys = new List<long>();
+            }
+            else
+            {
+                _keys = new List<long>(approxSize);
+            }
+        }
 
         private static int GetArrayLength(int size) => Hashes + (SizeFactor * size / 100);
 
@@ -148,7 +162,15 @@ namespace TrimDB.Core.Storage.Filters
 
         public override bool AddKey(ReadOnlySpan<byte> key)
         {
-            var hash = _hash.ComputeHash64(key);
+            ulong hash;
+            if (_useMurMur)
+            {
+                hash = _hash.ComputeHash64(key);
+            }
+            else
+            {
+                hash = Farmhash.Sharp.Farmhash.Hash64(key);
+            }
             _keys.Add((long)hash);
             return true;
         }
@@ -171,7 +193,7 @@ namespace TrimDB.Core.Storage.Filters
         {
             var uniq = _keys.Distinct().ToArray();
             var coll = (uniq.Count() - _keys.Count) / (double)_keys.Count;
-            
+
             LoadFromKeys(uniq);
             var sizeToSave = sizeof(byte) + sizeof(int) + sizeof(long) + _fingerPrints.Length;
             var span = pipeWriter.GetSpan(sizeToSave);

@@ -13,7 +13,7 @@ namespace TrimDB.Benchmarks
         public byte[] _data;
         private static readonly Random _rand = new Random(7722);
 
-        [Params(10, 20, 100, 1000)]
+        [Params(10)]
         public int BlockSize { get; set; }
 
         [GlobalSetup]
@@ -46,7 +46,6 @@ namespace TrimDB.Benchmarks
         public void FarmHash64()
         {
             Farmhash.Sharp.Farmhash.Hash64(_data);
-            
         }
 
     }

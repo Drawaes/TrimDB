@@ -51,6 +51,8 @@ namespace TrimDB.Core
             }
         }
 
+        internal TrimDatabaseOptions Options => _options;
+
         public async Task LoadAsync()
         {
             foreach (var sl in _storageLayers)

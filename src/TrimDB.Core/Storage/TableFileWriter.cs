@@ -27,7 +27,6 @@ namespace TrimDB.Core.Storage
 
         public TableFileWriter(string fileName)
         {
-            _metaData = new TableMetaData();
             _fileName = fileName;
         }
 
@@ -35,6 +34,7 @@ namespace TrimDB.Core.Storage
 
         public async Task SaveMemoryTable(MemoryTable skipList)
         {
+            _metaData = new TableMetaData(0, true);
             using var fs = System.IO.File.Open(_fileName, System.IO.FileMode.CreateNew);
             var pipeWriter = PipeWriter.Create(fs);
 
