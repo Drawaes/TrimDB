@@ -10,7 +10,7 @@ namespace TrimDB.Core
 {
     public class TrimDatabaseOptions
     {
-        public Func<MemoryTable> MemoryTable { get; set; } = () => new SkipList32(new NativeAllocator32(10 * 1024 * 1024, 25));
+        public Func<MemoryTable> MemoryTable { get; set; } = () => new SkipList32(new ArrayBasedAllocator32(10 * 1024 * 1024, 25));
         public Func<BlockCache> BlockCache { get; set; } = () => new ProtoSharded(2_560);
         public int Levels { get; set; } = 5;
         public string DatabaseFolder { get; set; }

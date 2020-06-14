@@ -112,7 +112,7 @@ namespace TrimDB.Core.Facts
         [Fact]
         public async Task CheckTableIteratorWorks()
         {
-            using var allocator = new NativeAllocator32(4096 * 10_000, 25);
+            using var allocator = new ArrayBasedAllocator32(4096 * 10_000, 25);
             var memoryTable = new SkipList32(allocator);
 
             var loadedWords = CommonData.Words;

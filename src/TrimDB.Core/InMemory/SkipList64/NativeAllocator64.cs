@@ -12,7 +12,6 @@ namespace TrimDB.Core.InMemory.SkipList64
     {
         private readonly IntPtr _pointer;
         private long _currentPointer;
-        private const int ALIGNMENTSIZE = 64;
         private readonly long _maxSize;
 
         public override SkipListNode64 HeadNode => GetNode(ALIGNMENTSIZE);
@@ -49,12 +48,6 @@ namespace TrimDB.Core.InMemory.SkipList64
             var ptr = (byte*)_pointer.ToPointer() + valueLocation;
             var length = Unsafe.Read<int>(ptr);
             return new Span<byte>(ptr + sizeof(int), length);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int AlignLength(int length)
-        {
-            return (length + (ALIGNMENTSIZE - 1)) & ~(ALIGNMENTSIZE - 1);
         }
 
         protected unsafe override long AllocateNode(int length, out Span<byte> memory)

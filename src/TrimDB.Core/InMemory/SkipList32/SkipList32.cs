@@ -8,10 +8,10 @@ namespace TrimDB.Core.InMemory.SkipList32
 {
     public class SkipList32 : MemoryTable, IDisposable
     {
-        private readonly NativeAllocator32 _allocator;
+        private readonly ArrayBasedAllocator32 _allocator;
         private long _currentWriters;
 
-        public SkipList32(NativeAllocator32 allocator) => _allocator = allocator;
+        public SkipList32(ArrayBasedAllocator32 allocator) => _allocator = allocator;
 
         private void IncrementWriter()
         {

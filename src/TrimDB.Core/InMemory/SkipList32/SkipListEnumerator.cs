@@ -7,10 +7,10 @@ namespace TrimDB.Core.InMemory.SkipList32
 {
     public class SkipListEnumerator32 : IEnumerator<IMemoryItem>
     {
-        private readonly NativeAllocator32 _allocator;
+        private readonly ArrayBasedAllocator32 _allocator;
         private int _currentLocation;
 
-        internal SkipListEnumerator32(NativeAllocator32 allocator)
+        internal SkipListEnumerator32(ArrayBasedAllocator32 allocator)
         {
             _allocator = allocator;
             _currentLocation = _allocator.HeadNode.Location;
@@ -43,10 +43,10 @@ namespace TrimDB.Core.InMemory.SkipList32
 
     public struct SkipListItem32 : IMemoryItem
     {
-        private readonly NativeAllocator32 _allocator;
+        private readonly ArrayBasedAllocator32 _allocator;
         private readonly int _nodeLocation;
 
-        internal SkipListItem32(NativeAllocator32 allocator, int nodeLocation)
+        internal SkipListItem32(ArrayBasedAllocator32 allocator, int nodeLocation)
         {
             _allocator = allocator;
             _nodeLocation = nodeLocation;

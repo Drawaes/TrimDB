@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace TrimDB.Core.InMemory.SkipList64
@@ -7,6 +8,7 @@ namespace TrimDB.Core.InMemory.SkipList64
     public abstract class SkipListAllocator64 : IDisposable
     {
         protected readonly SkipListHeightGenerator64 HeightGenerator;
+        protected const int ALIGNMENTSIZE = 64;
 
         protected SkipListAllocator64(byte maxHeight) => HeightGenerator = new SkipListHeightGenerator64(maxHeight);
 
@@ -19,6 +21,12 @@ namespace TrimDB.Core.InMemory.SkipList64
         protected abstract long AllocateNode(int length, out Span<byte> memoy);
         public abstract long AllocateValue(ReadOnlySpan<byte> value);
         protected abstract void Dispose(bool isDisposing);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static long AlignLength(long length)
+        {
+            return (length + (ALIGNMENTSIZE - 1)) & ~(ALIGNMENTSIZE - 1);
+        }
 
         public SkipListNode64 AllocateNode(ReadOnlySpan<byte> key)
         {

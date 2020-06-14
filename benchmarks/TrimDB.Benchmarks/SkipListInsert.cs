@@ -74,10 +74,24 @@ namespace TrimDB.Benchmarks
             await Task.WhenAll(tasks);
         }
 
+        [Benchmark]
+        public async Task ArrayAllocator()
+        {
+            using var simpleAllocator = new ArrayBasedAllocator64(4096 * 1024 * 10, TableHeight);
+            var skipList = new SkipList64(simpleAllocator);
+            var tasks = new Task[Environment.ProcessorCount];
+
+            for (var i = 0; i < tasks.Length; i++)
+            {
+                tasks[i] = Task.Run(() => ThreadedPut(skipList));
+            }
+            await Task.WhenAll(tasks);
+        }
+
         [Benchmark()]
         public async Task Native32Allocator()
         {
-            using var simpleAllocator = new NativeAllocator32(4096 * 1024 * 10, TableHeight);
+            using var simpleAllocator = new ArrayBasedAllocator32(4096 * 1024 * 10, TableHeight);
             var skipList = new SkipList32(simpleAllocator);
             var tasks = new Task[Environment.ProcessorCount];
 
@@ -146,7 +160,7 @@ namespace TrimDB.Benchmarks
         }
 
 
-        [Benchmark]
+        //[Benchmark]
         public async Task ConcurrentDictionary()
         {
             var dictionary = new ConcurrentDictionary<byte[], byte[]>(new Comparer());

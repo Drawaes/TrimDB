@@ -19,7 +19,7 @@ namespace TrimDB.Core.Facts
         [Fact]
         public Task CanPutInOrder32()
         {
-            using var simpleAllocator = new NativeAllocator32(4096 * 10_000, 25);
+            using var simpleAllocator = new ArrayBasedAllocator32(4096 * 50_000, 25);
             var skipList = new SkipList32(simpleAllocator);
             return CanPutInOrder(skipList);
         }
@@ -27,7 +27,7 @@ namespace TrimDB.Core.Facts
         [Fact]
         public Task CanPutInOrder64()
         {
-            using var simpleAllocator = new NativeAllocator64(4096 * 20_000, 25);
+            using var simpleAllocator = new ArrayBasedAllocator64(4096 * 50_000, 25);
             var skipList = new SkipList64(simpleAllocator);
             return CanPutInOrder(skipList);
         }
@@ -35,7 +35,7 @@ namespace TrimDB.Core.Facts
         [Fact]
         public void SkipListPutWorking32()
         {
-            using var simpleAllocator = new NativeAllocator32(4096 * 10_000, 25);
+            using var simpleAllocator = new ArrayBasedAllocator32(4096 * 10_000, 25);
             var skipList = new SkipList32(simpleAllocator);
             SkipListPutWorking(skipList);
         }
@@ -43,7 +43,7 @@ namespace TrimDB.Core.Facts
         [Fact]
         public void SkipListPutWorking64()
         {
-            using var simpleAllocator = new NativeAllocator64(4096 * 10_000, 25);
+            using var simpleAllocator = new ArrayBasedAllocator64(4096 * 10_000, 25);
             var skipList = new SkipList64(simpleAllocator);
             SkipListPutWorking(skipList);
         }

@@ -4,34 +4,37 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
-using static TrimDB.Core.Interop.Windows.Memory;
 
 namespace TrimDB.Core.InMemory.SkipList32
 {
-    public class NativeAllocator32 : IDisposable
+    public class ArrayBasedAllocator32 : IDisposable
     {
-        private readonly IntPtr _pointer;
+        private readonly GCHandle _gcHandle;
+        private byte[] _data;
+        private int _initalOffset;
         private int _currentPointer;
-        private const int ALIGNMENTSIZE = 16;
+        protected const int ALIGNMENTSIZE = 64;
         private readonly int _maxSize;
         private readonly SkipList64.SkipListHeightGenerator64 _heightGenerator;
 
-        public SkipListNode32 HeadNode => GetNode(ALIGNMENTSIZE);
+        public SkipListNode32 HeadNode => GetNode(_initalOffset);
 
         public byte CurrentHeight => _heightGenerator.CurrentHeight;
         public byte MaxHeight => _heightGenerator.MaxHeight;
 
-        public NativeAllocator32(int maxSize, byte maxHeight)
+        public ArrayBasedAllocator32(int maxSize, byte maxHeight)
         {
             _heightGenerator = new SkipList64.SkipListHeightGenerator64(maxHeight);
             _maxSize = maxSize;
-            _pointer = VirtualAlloc(IntPtr.Zero, (UIntPtr)maxSize, AllocationType.MEM_COMMIT | AllocationType.MEM_RESERVE, Protection.PAGE_READWRITE);
-            if (_pointer == IntPtr.Zero)
+
+            _data = new byte[maxSize + ALIGNMENTSIZE - 1];
+            _gcHandle = GCHandle.Alloc(_data, GCHandleType.Pinned);
+            _initalOffset = (int)(AlignLength(_gcHandle.AddrOfPinnedObject().ToInt64()) - _gcHandle.AddrOfPinnedObject().ToInt64());
+            if (_initalOffset == 0)
             {
-                var error = Marshal.GetLastWin32Error();
-                throw new OutOfMemoryException($"We could not allocate memory for the skip list error code was {error}");
+                _initalOffset += ALIGNMENTSIZE;
             }
-            _currentPointer = ALIGNMENTSIZE;
+            _currentPointer = _initalOffset;
 
             var headNodeSize = SkipListNode32.CalculateSizeNeeded(maxHeight, 0);
             AllocateNode(headNodeSize, out var memory);
@@ -41,21 +44,27 @@ namespace TrimDB.Core.InMemory.SkipList32
         public unsafe SkipListNode32 GetNode(int nodeLocation)
         {
             if (nodeLocation == 0) return default;
-            var ptr = (byte*)_pointer.ToPointer() + nodeLocation;
-            var length = Unsafe.Read<int>(ptr);
-            var node = new SkipListNode32(new Span<byte>(ptr, length), nodeLocation);
+            ref var sizeOffset = ref _data[nodeLocation];
+            var length = Unsafe.ReadUnaligned<int>(ref sizeOffset);
+            var node = new SkipListNode32(new Span<byte>(_data, nodeLocation, length), nodeLocation);
             return node;
         }
 
         public unsafe ReadOnlySpan<byte> GetValue(int valueLocation)
         {
-            var ptr = (byte*)_pointer.ToPointer() + valueLocation;
-            var length = Unsafe.Read<int>(ptr);
-            return new Span<byte>(ptr + sizeof(int), length);
+            ref var sizeOffset = ref _data[valueLocation];
+            var length = Unsafe.ReadUnaligned<int>(ref sizeOffset);
+            return new Span<byte>(_data, valueLocation + sizeof(int), length);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int AlignLength(int length)
+        {
+            return (length + (ALIGNMENTSIZE - 1)) & ~(ALIGNMENTSIZE - 1);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static long AlignLength(long length)
         {
             return (length + (ALIGNMENTSIZE - 1)) & ~(ALIGNMENTSIZE - 1);
         }
@@ -76,7 +85,6 @@ namespace TrimDB.Core.InMemory.SkipList32
         {
             var length = value.Length;
             var alignedLength = AlignLength(length + 4);
-
             var currentSize = Interlocked.Add(ref _currentPointer, alignedLength);
             if (currentSize > _maxSize)
             {
@@ -84,10 +92,9 @@ namespace TrimDB.Core.InMemory.SkipList32
             }
             currentSize -= alignedLength;
 
-            var ptr = (byte*)_pointer.ToPointer() + currentSize;
-            *(int*)ptr = value.Length;
-            var span = new Span<byte>(ptr + 4, value.Length);
-            value.CopyTo(span);
+            ref var pointToWrite = ref _data[currentSize];
+            Unsafe.WriteUnaligned(ref pointToWrite, length);
+            value.CopyTo(new Span<byte>(_data, currentSize + 4, length));
             return currentSize;
         }
 
@@ -102,13 +109,10 @@ namespace TrimDB.Core.InMemory.SkipList32
             }
 
             currentSize -= alignedLength;
-            memory = new Span<byte>((byte*)_pointer.ToPointer() + currentSize, length);
+            memory = new Span<byte>(_data, (int)currentSize, length);
             return currentSize;
         }
 
-        public void Dispose()
-        {
-            VirtualFree(_pointer, (UIntPtr)0, FreeType.MEM_RELEASE);
-        }
+        public void Dispose() => _gcHandle.Free();
     }
 }
