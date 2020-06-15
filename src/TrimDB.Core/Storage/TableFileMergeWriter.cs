@@ -117,66 +117,42 @@ namespace TrimDB.Core.Storage
             do
             {
                 var sizeNeeded = 0;
-                //if (merger.Current.IsDeleted)
-                //{
-                //    // If the key doesn't exist in a level below we do not need to store a tombstone we can just remove completely
-                //    var doesExist = await _database.DoesKeyExistBelowLevel(merger.Current.Key.ToArray(), _lowestLevel);
-                //    if (doesExist == SearchResult.NotFound || doesExist == SearchResult.Deleted) continue;
-                //    sizeNeeded = (sizeof(int) * 2) + merger.Current.Key.Length;
-                //}
-                //else
-                //{
-                sizeNeeded = (sizeof(int) * 2) + merger.Current.Key.Length + merger.Current.Value.Length;
-                //}
 
-                if (!WriteBlock(merger, sizeNeeded, ref memBlock)) return false;
+                sizeNeeded = (sizeof(int) * 2) + merger.Current.Key.Length + merger.Current.Value.Length;
+
+                if (sizeNeeded > memBlock.Length)
+                {
+                    memBlock.Span.Fill(0);
+                    _filePipe.Advance(FileConsts.PageSize);
+                    _currentFileSize += FileConsts.PageSize;
+                    return false;
+                }
+
+                _metaData.Count++;
+                _metaData.Filter.AddKey(merger.Current.Key);
+                BinaryPrimitives.WriteInt32LittleEndian(memBlock.Span, merger.Current.Key.Length);
+                memBlock = memBlock[sizeof(int)..];
+                merger.Current.Key.CopyTo(memBlock.Span);
+                _metaData.LastKey = merger.Current.Key.ToArray();
+
+                memBlock = memBlock[merger.Current.Key.Length..];
+
+                if (merger.Current.IsDeleted)
+                {
+                    BinaryPrimitives.WriteInt32LittleEndian(memBlock.Span, -1);
+                    memBlock = memBlock[sizeof(int)..];
+                    continue;
+                }
+
+                BinaryPrimitives.WriteInt32LittleEndian(memBlock.Span, merger.Current.Value.Length);
+                memBlock = memBlock[sizeof(int)..];
+                merger.Current.Value.CopyTo(memBlock.Span);
+                memBlock = memBlock[merger.Current.Value.Length..];
             } while (await merger.MoveNextAsync());
 
             memBlock.Span.Fill(0);
             _filePipe.Advance(FileConsts.PageSize);
             _currentFileSize += FileConsts.PageSize;
-            return true;
-        }
-
-        private bool WriteBlock(TableFileMerger merger, int sizeNeeded, ref Memory<byte> memBlock)
-        {
-            var span = memBlock.Span;
-            var remainingLength = span.Length;
-
-            if (sizeNeeded > remainingLength)
-            {
-                span.Fill(0);
-                _filePipe.Advance(FileConsts.PageSize);
-                _currentFileSize += FileConsts.PageSize;
-                return false;
-            }
-
-            var key = merger.Current.Key;
-
-            _metaData.Count++;
-            _metaData.Filter.AddKey(key);
-            BinaryPrimitives.WriteInt32LittleEndian(span, key.Length);
-            span = span[sizeof(int)..];
-            key.CopyTo(span);
-            _metaData.LastKey = key.ToArray();
-
-            span = span[key.Length..];
-
-            if (merger.Current.IsDeleted)
-            {
-                BinaryPrimitives.WriteInt32LittleEndian(span, -1);
-                span = span[sizeof(int)..];
-                memBlock = memBlock.Slice(remainingLength - span.Length);
-                return true;
-            }
-
-            var value = merger.Current.Value;
-
-            BinaryPrimitives.WriteInt32LittleEndian(span, value.Length);
-            span = span[sizeof(int)..];
-            value.CopyTo(span);
-            span = span[value.Length..];
-            memBlock = memBlock.Slice(remainingLength - span.Length);
             return true;
         }
     }

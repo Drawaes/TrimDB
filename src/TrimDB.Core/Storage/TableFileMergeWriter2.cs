@@ -116,7 +116,6 @@ namespace TrimDB.Core.Storage
 
             do
             {
-                var sizeNeeded = 0;
                 //if (merger.Current.IsDeleted)
                 //{
                 //    // If the key doesn't exist in a level below we do not need to store a tombstone we can just remove completely
@@ -126,10 +125,10 @@ namespace TrimDB.Core.Storage
                 //}
                 //else
                 //{
-                sizeNeeded = (sizeof(int) * 2) + merger.Current.Key.Length + merger.Current.Value.Length;
+               
                 //}
 
-                if (!WriteBlock(merger, sizeNeeded, ref memBlock)) return false;
+                if (!WriteBlock(merger, ref memBlock)) return false;
             } while (await merger.MoveNextAsync());
 
             memBlock.Span.Fill(0);
@@ -138,10 +137,17 @@ namespace TrimDB.Core.Storage
             return true;
         }
 
-        private bool WriteBlock(TableFileMerger merger, int sizeNeeded, ref Memory<byte> memBlock)
+        private bool WriteBlock(TableFileMerger merger, ref Memory<byte> memBlock)
         {
             var span = memBlock.Span;
             var remainingLength = span.Length;
+
+            var key = merger.Current.Key;
+            var value = merger.Current.Value;
+            var keyLength = key.Length;
+            var valueLength = value.Length;
+
+            var sizeNeeded = (sizeof(int) * 2) + keyLength + valueLength;
 
             if (sizeNeeded > remainingLength)
             {
@@ -151,32 +157,32 @@ namespace TrimDB.Core.Storage
                 return false;
             }
 
-            var key = merger.Current.Key;
-
             _metaData.Count++;
             _metaData.Filter.AddKey(key);
-            BinaryPrimitives.WriteInt32LittleEndian(span, key.Length);
-            span = span[sizeof(int)..];
-            key.CopyTo(span);
+
+            ref var currentPointer = ref MemoryMarshal.GetReference(span);
+            Unsafe.WriteUnaligned(ref currentPointer, keyLength);
+            currentPointer = ref Unsafe.Add(ref currentPointer, sizeof(int));
+
+            Unsafe.CopyBlockUnaligned(ref currentPointer, ref MemoryMarshal.GetReference(key), (uint) keyLength);
             _metaData.LastKey = key.ToArray();
 
-            span = span[key.Length..];
+            currentPointer = ref Unsafe.Add(ref currentPointer, keyLength);
 
-            if (merger.Current.IsDeleted)
-            {
-                BinaryPrimitives.WriteInt32LittleEndian(span, -1);
-                span = span[sizeof(int)..];
-                memBlock = memBlock.Slice(remainingLength - span.Length);
-                return true;
-            }
+            //if (merger.Current.IsDeleted)
+            //{
+            //    BinaryPrimitives.WriteInt32LittleEndian(span, -1);
+            //    span = span[sizeof(int)..];
+            //    memBlock = memBlock.Slice(remainingLength - span.Length);
+            //    return true;
+            //}
 
-            var value = merger.Current.Value;
+            Unsafe.WriteUnaligned(ref currentPointer, valueLength);
+            currentPointer = ref Unsafe.Add(ref currentPointer, sizeof(int));
 
-            BinaryPrimitives.WriteInt32LittleEndian(span, value.Length);
-            span = span[sizeof(int)..];
-            value.CopyTo(span);
-            span = span[value.Length..];
-            memBlock = memBlock.Slice(remainingLength - span.Length);
+            Unsafe.CopyBlockUnaligned(ref currentPointer, ref MemoryMarshal.GetReference(value), (uint)valueLength);
+
+            memBlock = memBlock.Slice(sizeNeeded);
             return true;
         }
     }

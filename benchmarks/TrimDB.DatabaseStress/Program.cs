@@ -29,8 +29,8 @@ namespace TrimDB.DatabaseStress
         {
             //var merge = new MergeBenchmark();
             //merge.GlobalSetup();
-            //merge.IterationSetup();
             //await merge.MergeFiles();
+            //return;
 
             var summary = BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
             return;

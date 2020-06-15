@@ -47,12 +47,6 @@ namespace TrimDB.DatabaseStress
             }
         }
 
-        //[IterationSetup]
-        //public void IterationSetup()
-        //{
-        //    
-        //}
-
         [Benchmark(Baseline = true)]
         public async Task MergeFiles()
         {
@@ -66,7 +60,7 @@ namespace TrimDB.DatabaseStress
         public async Task MergeFiles2()
         {
             var merger = new TableFileMerger(_tableFiles.Select(f => f.GetAsyncEnumerator()).ToArray());
-            var mWriter = new TableFileMergeWriter(_storageLayer, _cache, loadNewFiles: false);
+            var mWriter = new TableFileMergeWriter2(_storageLayer, _cache, loadNewFiles: false);
 
             await mWriter.WriteFromMerger(merger);
         }
