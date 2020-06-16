@@ -109,7 +109,7 @@ namespace TrimDB.Core.KVLog
         }
 
         // Store the put operation in the kvLog. Either return immediately or await for operation to be written to disk.
-        protected async void ConsumeOperationsFromChannel()
+        protected async Task ConsumeOperationsFromChannel()
         {
             // block async reading from channel
             while (true)
@@ -123,7 +123,7 @@ namespace TrimDB.Core.KVLog
                 }
                 else
                 {
-                    _kvLogWriter.FlushAsync();
+                    _ = _kvLogWriter.FlushAsync();
                 }
 
                 // call back to storage
