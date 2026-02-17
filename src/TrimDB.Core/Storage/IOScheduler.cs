@@ -291,13 +291,16 @@ namespace TrimDB.Core.Storage
                     _storageLayer.AddTableFile(tableFile);
                     _database.RemoveMemoryTable(sl);
 
-                    // Checkpoint WAL: record that this memtable's entries are now on disk
+                    // Checkpoint WAL: record that this memtable's entries are now on disk.
+                    // Fire-and-forget to avoid deadlock: the WAL consumer may be blocked
+                    // waiting for IOScheduler channel space in OnBatchFlushed, so awaiting
+                    // RecordCommitted here would create a circular dependency.
                     var wal = _database.WalManager;
                     if (wal != null)
                     {
                         var checkpoint = sl.WalHighWatermark;
                         if (checkpoint > 0)
-                            await wal.RecordCommitted(checkpoint);
+                            _ = wal.RecordCommitted(checkpoint);
                     }
 
                     // Signal compaction that a new SSTable is available

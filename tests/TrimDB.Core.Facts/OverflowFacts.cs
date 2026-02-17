@@ -30,6 +30,7 @@ namespace TrimDB.Core.Facts
                 DatabaseFolder = _folder,
                 BlockCache = () => new MMapBlockCache(),
                 DisableMerging = true,
+                DisableWAL = true,
                 // Very small allocator: ~400KB to trigger overflow quickly
                 MemoryTable = () => new SkipList32(new ArrayBasedAllocator32(4096 * 100, 25))
             };

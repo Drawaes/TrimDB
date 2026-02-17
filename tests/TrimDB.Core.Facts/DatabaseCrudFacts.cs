@@ -158,6 +158,7 @@ namespace TrimDB.Core.Facts
                 DatabaseFolder = folder,
                 BlockCache = () => new MMapBlockCache(),
                 DisableMerging = true,
+                DisableWAL = true,
                 MemoryTable = () => new SkipList32(new ArrayBasedAllocator32(16 * 1024 * 1024, 25))
             };
 

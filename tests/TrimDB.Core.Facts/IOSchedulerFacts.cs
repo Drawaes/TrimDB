@@ -56,6 +56,7 @@ namespace TrimDB.Core.Facts
                     DatabaseFolder = folder,
                     BlockCache = () => capturedCache,
                     DisableMerging = true,
+                    DisableWAL = true,
                     MemoryTable = () => new SkipList32(new ArrayBasedAllocator32(4096 * 50, 25)),
                 };
 
@@ -121,6 +122,7 @@ namespace TrimDB.Core.Facts
                     DatabaseFolder = folder,
                     BlockCache = () => capturedCache,
                     DisableMerging = true,
+                    DisableWAL = true,
                     MemoryTable = () => new SkipList32(new ArrayBasedAllocator32(4096 * 50, 25)),
                 };
 
@@ -175,6 +177,7 @@ namespace TrimDB.Core.Facts
                     DatabaseFolder = folder,
                     BlockCache = () => capturedCache,
                     DisableMerging = true,
+                    DisableWAL = true,
                     MemoryTable = () => new SkipList32(new ArrayBasedAllocator32(4096 * 50, 25)),
                 };
 
