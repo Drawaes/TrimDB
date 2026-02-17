@@ -40,24 +40,27 @@ Every write passes through three stages before it is considered durable:
 2. **MemTable** - the key-value pair is inserted into a lock-free skip list backed by a pre-allocated slab
 3. **SSTable** - when the MemTable is full, a background flush serializes it to an immutable `.trim` file on disk
 
-```mermaid
-flowchart TD
-    subgraph Write Path
-        C1[Client] --> WAL["WAL\nFileBasedKVLogManager\n(batched fsync via Channel)"]
-        WAL --> MT["MemTable\nSkipList32 / slab allocator\n(lock-free, 32-bit offsets)"]
-        MT -- "full → park + switch" --> FLUSH["IOScheduler\nflush loop"]
-        FLUSH --> L1["Level 1: UnsortedStorageLayer\n(*.trim files, newest-first search)"]
-        L1 -- "at capacity → background compaction" --> L2["Level 2+: SortedStorageLayers\n(non-overlapping *.trim files)"]
-        L2 -. "cascade merge..." .-> LN["Level N"]
-    end
+**Write path:**
 
-    subgraph Read Path
-        C2[Client] --> MT2["Active MemTable"]
-        MT2 --> OLD["Parked MemTables\n(being flushed)"]
-        OLD --> RL1["Level 1\n(newest first)"]
-        RL1 --> RL2["Level 2"]
-        RL2 -. "..." .-> RLN["Level N"]
-    end
+```mermaid
+flowchart TB
+    C1[Client] --> WAL["WAL (batched fsync)"]
+    WAL --> MT["MemTable (SkipList32)"]
+    MT -- "full → park + switch" --> FLUSH["IOScheduler flush"]
+    FLUSH --> L1["Level 1: Unsorted"]
+    L1 -- "background compaction" --> L2["Level 2+: Sorted"]
+    L2 -. "cascade..." .-> LN["Level N"]
+```
+
+**Read path:**
+
+```mermaid
+flowchart TB
+    C2[Client] --> MT2["Active MemTable"]
+    MT2 --> OLD["Parked MemTables"]
+    OLD --> RL1["Level 1 (newest first)"]
+    RL1 --> RL2["Level 2"]
+    RL2 -. "..." .-> RLN["Level N"]
 ```
 
 Reads always consult layers from newest to oldest and short-circuit the moment a definitive answer is found - either a value or a tombstone.
