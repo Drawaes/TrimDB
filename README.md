@@ -158,13 +158,18 @@ The 4096-byte block size is a deliberate choice: it matches the OS page size. Wh
 
 **Slotted block format**: Within each 4096-byte block, TrimDB uses a slotted-page layout:
 
-```
-| Header: itemCount (2 bytes) | dataRegionStart (2 bytes)  |
-| Slot Directory → growing forward                          |
-|   { dataOffset (2 bytes), keyHash (2 bytes) } per entry  |
-| Free Space                                                |
-| ← Item Data growing backward                             |
-|   { keyLen (2), valueLen (2), key bytes, value bytes }   |
+```mermaid
+block-beta
+    columns 1
+    HDR["Header: itemCount (2 bytes) | dataRegionStart (2 bytes)"]
+    SLOT["Slot Directory → growing forward\n{ dataOffset (2), keyHash (2) } per entry"]
+    FREE["Free Space"]
+    ITEM["Item Data ← growing backward\n{ keyLen (2), valueLen (2), key, value }"]
+
+    style HDR fill:#2d6a4f,color:#fff
+    style SLOT fill:#1b4965,color:#fff
+    style FREE fill:#555,color:#aaa
+    style ITEM fill:#7f4f24,color:#fff
 ```
 
 The slot directory is kept in key-sorted order and stores a 16-bit FNV-1a key hash alongside each slot offset. `TryFindKey` binary-searches the slot directory, uses the embedded hash as a quick reject before full key comparison, and only reads item data when the hash matches. This layout is cache-efficient in both directions: forward iteration walks the slot directory sequentially; random lookup binary-searches the directory before loading the item region from the back of the block. Deleted entries use sentinel value `0xFFFF` in the `valueLen` field.
