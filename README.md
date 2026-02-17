@@ -8,10 +8,11 @@ It is a Log-Structured Merge-Tree (LSM) storage engine - the same foundational a
 
 ```csharp
 var options = new TrimDatabaseOptions { DatabaseFolder = "./mydb" };
-await using var db = await TrimDatabase.OpenAsync(options);
+await using var db = new TrimDatabase(options);
+await db.LoadAsync();
 
 await db.PutAsync(key, value);
-var value = await db.GetAsync(key);
+var result = await db.GetAsync(key);
 await db.DeleteAsync(key);
 ```
 
@@ -126,7 +127,7 @@ The channel design means the consumer can drain an entire batch of concurrent wr
 
 `WalWaitForFlush` is a configurable option: wait for OS acknowledgment for strict durability, or skip the wait for maximum throughput at the cost of a small durability window.
 
-**Crash recovery**: On `OpenAsync`, `TrimDatabase.ReplayWalAsync` reads from the last commit marker forward, replaying all unacknowledged operations into a fresh MemTable. After replay, normal operation resumes with full consistency. When the IOScheduler successfully flushes a MemTable to disk, it records the MemTable's `WalHighWatermark` as a new commit marker, bounding future recovery work.
+**Crash recovery**: On `LoadAsync`, `TrimDatabase.ReplayWalAsync` reads from the last commit marker forward, replaying all unacknowledged operations into a fresh MemTable. After replay, normal operation resumes with full consistency. When the IOScheduler successfully flushes a MemTable to disk, it records the MemTable's `WalHighWatermark` as a new commit marker, bounding future recovery work.
 
 ---
 
