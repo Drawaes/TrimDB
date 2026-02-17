@@ -39,7 +39,7 @@ namespace TrimDB.Core.Storage.Filters
             }
         }
 
-        private static int GetArrayLength(int size) => Hashes + (SizeFactor * size / 100);
+        private static int GetArrayLength(int size) => Math.Max(Hashes * 12, Hashes + (SizeFactor * size / 100));
 
         public void LoadFromKeys(long[] keys)
         {

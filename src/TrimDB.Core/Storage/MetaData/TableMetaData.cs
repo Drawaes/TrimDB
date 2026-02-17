@@ -253,7 +253,7 @@ namespace TrimDB.Core.Storage.MetaData
             while (currentMemory.Length > 0)
             {
                 var result = await fs.ReadAsync(currentMemory);
-                if (result == -1)
+                if (result <= 0)
                 {
                     throw new InvalidOperationException("Could not read any data from the file");
                 }

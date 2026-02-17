@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text;
 using System.Threading;
 
@@ -152,7 +151,7 @@ namespace TrimDB.Core.InMemory.SkipList64
             }
         }
 
-        public bool Delete(ReadOnlySpan<byte> key)
+        public override bool Delete(ReadOnlySpan<byte> key)
         {
             var result = Search(key, out var nextNode);
             if (result == SearchResult.Found)
@@ -160,7 +159,21 @@ namespace TrimDB.Core.InMemory.SkipList64
                 nextNode.SetDeleted();
                 return true;
             }
-            return false;
+            if (result == SearchResult.Deleted)
+            {
+                return true;
+            }
+            // Key not in memtable — insert a tombstone so it shadows disk entries
+            if (!Put(key, ReadOnlySpan<byte>.Empty))
+            {
+                return false;
+            }
+            result = Search(key, out nextNode);
+            if (result == SearchResult.Found)
+            {
+                nextNode.SetDeleted();
+            }
+            return true;
         }
 
         public override SearchResult TryGet(ReadOnlySpan<byte> key, out ReadOnlySpan<byte> value)
@@ -197,10 +210,11 @@ namespace TrimDB.Core.InMemory.SkipList64
                         return SearchResult.NotFound;
                     }
                 }
-                node = _allocator.GetNode(nextNodeLocation);
-                var compare = key.SequenceCompareTo(node.Key);
+                var nextNode = _allocator.GetNode(nextNodeLocation);
+                var compare = key.SequenceCompareTo(nextNode.Key);
                 if (compare == 0)
                 {
+                    node = nextNode;
                     if (node.IsDeleted)
                     {
                         return SearchResult.Deleted;
@@ -212,7 +226,7 @@ namespace TrimDB.Core.InMemory.SkipList64
                 }
                 else if (compare > 0)
                 {
-                    currentNode = node;
+                    currentNode = nextNode;
                     continue;
                 }
 
@@ -222,6 +236,7 @@ namespace TrimDB.Core.InMemory.SkipList64
                     continue;
                 }
 
+                node = default;
                 return SearchResult.NotFound;
             }
         }

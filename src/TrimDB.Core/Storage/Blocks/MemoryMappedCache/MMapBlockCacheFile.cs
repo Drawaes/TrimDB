@@ -18,6 +18,7 @@ namespace TrimDB.Core.Storage.Blocks.MemoryMappedCache
         private readonly MMapBlockCache _parentCache;
         private int _numberOfRefs;
         private readonly int _blockCount;
+        private int _disposed;
 
         public unsafe MMapBlockCacheFile(string fileName, int blockCount, FileIdentifier fileId, MMapBlockCache parentCache)
         {
@@ -49,15 +50,10 @@ namespace TrimDB.Core.Storage.Blocks.MemoryMappedCache
 
         public void Dispose()
         {
+            if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
             _mappedView.SafeMemoryMappedViewHandle.ReleasePointer();
             _mappedView.Dispose();
             _mappedFile.Dispose();
-            GC.SuppressFinalize(this);
-        }
-
-        ~MMapBlockCacheFile()
-        {
-            _mappedView.SafeMemoryMappedViewHandle.ReleasePointer();
         }
     }
 }

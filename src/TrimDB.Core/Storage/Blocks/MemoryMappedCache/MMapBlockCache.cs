@@ -39,10 +39,12 @@ namespace TrimDB.Core.Storage.Blocks.MemoryMappedCache
 
         protected override void Dispose(bool disposing)
         {
+            if (!disposing) return;
             foreach (var bcf in _cache.Values)
             {
                 bcf.Dispose();
             }
+            _cache.Clear();
         }
 
     }

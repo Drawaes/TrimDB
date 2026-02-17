@@ -1,7 +1,5 @@
-﻿using System;
-using System.Buffers.Binary;
+using System;
 using System.Collections.Generic;
-using System.Text;
 using TrimDB.Core.InMemory;
 using TrimDB.Core.Storage.Filters;
 
@@ -21,7 +19,6 @@ namespace TrimDB.Core.Storage.Blocks
             _firstKey = iterator.Current.Key.ToArray();
             _filter = filter;
             _iterator = iterator;
-
         }
 
         public bool MoreToWrite => _moreToWrite;
@@ -33,40 +30,39 @@ namespace TrimDB.Core.Storage.Blocks
 
         public void WriteBlock(Span<byte> memoryToFill)
         {
+            var builder = new SlottedBlockBuilder(memoryToFill);
             var lastKey = new ReadOnlySpan<byte>();
-            var span = memoryToFill;
+
             do
             {
                 var key = _iterator.Current.Key;
                 var value = _iterator.Current.Value;
+                var isDeleted = _iterator.Current.IsDeleted;
 
-                var lengthNeeded = (sizeof(int) * 2) + key.Length + value.Length;
-                if (span.Length < lengthNeeded)
+                if (!builder.TryAdd(key, value, isDeleted))
                 {
-                    span.Fill(0);
+                    if (builder.Count == 0)
+                    {
+                        // Entry too large for any block. Give up instead of looping forever.
+                        _moreToWrite = false;
+                        builder.Finish();
+                        return;
+                    }
                     _moreToWrite = true;
+                    builder.Finish();
+                    _count += builder.Count;
                     return;
                 }
 
-                _count++;
                 _filter.AddKey(key);
-                BinaryPrimitives.WriteInt32LittleEndian(span, key.Length);
-                span = span[sizeof(int)..];
-                key.CopyTo(span);
-                span = span[key.Length..];
-
-                BinaryPrimitives.WriteInt32LittleEndian(span, value.Length);
-                span = span[sizeof(int)..];
-                value.CopyTo(span);
                 lastKey = key;
-                span = span[value.Length..];
 
             } while (_iterator.MoveNext());
 
-            span.Fill(0);
             _lastKey = lastKey.ToArray();
             _moreToWrite = false;
-
+            _count += builder.Count;
+            builder.Finish();
         }
     }
 }

@@ -1,14 +1,16 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using TrimDB.Core.InMemory;
+using TrimDB.Core.KVLog;
 using TrimDB.Core.Storage.Layers;
 
 namespace TrimDB.Core.Storage
@@ -21,13 +23,16 @@ namespace TrimDB.Core.Storage
         private readonly Task _mergeTask;
         private readonly UnsortedStorageLayer _storageLayer;
         private readonly TrimDatabase _database;
+        private readonly ILogger _logger;
         private readonly Func<StorageLayer, bool> _sortedStrategy;
         private readonly Func<StorageLayer, bool> _unsortedStrategy;
+        private readonly SemaphoreSlim _compactionSignal = new SemaphoreSlim(0);
 
-        public IOScheduler(int maxSkiplistBacklog, UnsortedStorageLayer storageLayer, TrimDatabase database)
+        public IOScheduler(int maxSkiplistBacklog, UnsortedStorageLayer storageLayer, TrimDatabase database, ILogger logger = null)
         {
             _storageLayer = storageLayer;
             _database = database;
+            _logger = logger ?? NullLogger.Instance;
             _sortedStrategy = (sl) => sl.NumberOfTables > (sl.MaxFilesAtLayer * 0.8);
             _unsortedStrategy = (sl) => sl.NumberOfTables > (sl.MaxFilesAtLayer * 0.8);
             _channel = Channel.CreateBounded<MemoryTable>(new BoundedChannelOptions(maxSkiplistBacklog));
@@ -46,24 +51,33 @@ namespace TrimDB.Core.Storage
         {
             _channel.Writer.Complete();
             _token.Cancel();
-            Console.WriteLine("About to wait for the writer task");
+            _logger.LogDebug("Waiting for writer task to complete");
             await _writerTask;
-            Console.WriteLine("About to wait for the merge task");
+            _logger.LogDebug("Waiting for merge task to complete");
             await _mergeTask;
-            Console.WriteLine("Completed waiting for the merge task");
+            _logger.LogDebug("IOScheduler disposed");
         }
 
         public ValueTask ScheduleSave(MemoryTable memoryTable) => _channel.Writer.WriteAsync(memoryTable);
 
         private async Task CheckForMerge()
         {
-            try
+            while (!_token.IsCancellationRequested)
             {
-                while (!_token.IsCancellationRequested)
+                try
                 {
-                    while (true)
+                    // Wait for a signal that a new SSTable was flushed (or cancellation)
+                    await _compactionSignal.WaitAsync(_token.Token);
+
+                    // Drain any extra signals so we don't re-enter unnecessarily
+                    while (_compactionSignal.CurrentCount > 0)
+                        _compactionSignal.Wait(0);
+
+                    // Keep merging until no layer needs compaction
+                    bool mergeHappened;
+                    do
                     {
-                        var mergeHappened = false;
+                        mergeHappened = false;
                         for (var i = _database.StorageLayers.Count - 2; i >= 0; i--)
                         {
                             var sl = _database.StorageLayers[i];
@@ -89,17 +103,16 @@ namespace TrimDB.Core.Storage
                                     throw new InvalidOperationException("We have a type of storage layer we don't know what to do with");
                             }
                         }
-                        if (!mergeHappened)
-                        {
-                            await Task.Delay(TimeSpan.FromMilliseconds(50), _token.Token);
-                            break;
-                        }
-                    }
+                    } while (mergeHappened);
                 }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Exception occured {ex}");
+                catch (OperationCanceledException) when (_token.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Merge operation failed");
+                }
             }
         }
 
@@ -150,7 +163,7 @@ namespace TrimDB.Core.Storage
             var overlapping = GetOverlappingTables(upperTable, layerBelow);
             overlapping.Insert(0, upperTable);
 
-            Console.WriteLine($"Merging from {sortedStorage.Level}");
+            _logger.LogInformation("Merging from level {Level}", sortedStorage.Level);
             var sw = Stopwatch.StartNew();
 
             await using (var merger = new TableFileMerger(overlapping.Select(ol => ol.GetAsyncEnumerator()).ToArray()))
@@ -162,7 +175,7 @@ namespace TrimDB.Core.Storage
                 layerBelow.AddAndRemoveTableFiles(writer.NewTableFiles, overlapping);
                 sortedStorage.RemoveTable(upperTable);
             }
-            Console.WriteLine($"Merge for level {sortedStorage.Level} took {sw.ElapsedMilliseconds}ms");
+            _logger.LogInformation("Merge for level {Level} took {ElapsedMs}ms", sortedStorage.Level, sw.ElapsedMilliseconds);
             foreach (var file in overlapping)
             {
                 file.Dispose();
@@ -185,7 +198,7 @@ namespace TrimDB.Core.Storage
             file.Dispose();
             System.IO.File.Delete(file.FileName);
 
-            Console.WriteLine("Moved table down with no merge");
+            _logger.LogInformation("Moved table down with no merge");
             // Move table down one level
         }
 
@@ -203,7 +216,7 @@ namespace TrimDB.Core.Storage
             var overlapped = GetOverlappingTables(oldestTable, nextLayer);
             overlapped.Insert(0, oldestTable);
 
-            Console.WriteLine($"Begin merging with {overlapped.Count} tables");
+            _logger.LogInformation("Begin merging with {TableCount} tables", overlapped.Count);
             var sw = Stopwatch.StartNew();
 
             await using (var merger = new TableFileMerger(overlapped.Select(ol => ol.GetAsyncEnumerator()).ToArray()))
@@ -222,7 +235,7 @@ namespace TrimDB.Core.Storage
                 System.IO.File.Delete(file.FileName);
             }
 
-            Console.WriteLine($"Finished merging in {sw.ElapsedMilliseconds}ms");
+            _logger.LogInformation("Finished merging in {ElapsedMs}ms", sw.ElapsedMilliseconds);
         }
 
         private List<TableFile> GetOverlappingTables(TableFile table, StorageLayer nextLayer)
@@ -250,7 +263,7 @@ namespace TrimDB.Core.Storage
 
             var noOverlap = true;
             var firstKey = table.FirstKey.Span;
-            var lastKey = table.FirstKey.Span;
+            var lastKey = table.LastKey.Span;
 
             foreach (var lowerTable in tablesBelow)
             {
@@ -277,10 +290,23 @@ namespace TrimDB.Core.Storage
                     await tableFile.LoadAsync();
                     _storageLayer.AddTableFile(tableFile);
                     _database.RemoveMemoryTable(sl);
+
+                    // Checkpoint WAL: record that this memtable's entries are now on disk
+                    var wal = _database.WalManager;
+                    if (wal != null)
+                    {
+                        var checkpoint = sl.WalHighWatermark;
+                        if (checkpoint > 0)
+                            await wal.RecordCommitted(checkpoint);
+                    }
+
+                    // Signal compaction that a new SSTable is available
+                    _compactionSignal.Release();
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine("Error " + ex);
+                    // Flush failed — memtable stays in _oldInMemoryTables so reads still work.
+                    _logger.LogError(ex, "Failed to flush memtable to SSTable");
                 }
             }
         }

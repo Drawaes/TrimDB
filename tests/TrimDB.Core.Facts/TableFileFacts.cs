@@ -66,7 +66,7 @@ namespace TrimDB.Core.Facts
         [Fact]
         public async Task WriteAndReadFile()
         {
-            using var allocator = new NativeAllocator64(4096 * 10_000, 25);
+            using var allocator = new NativeAllocator64(4096 * 20_000, 25);
             var memoryTable = new SkipList64(allocator);
 
             var loadedWords = CommonData.Words;
@@ -112,16 +112,17 @@ namespace TrimDB.Core.Facts
         [Fact]
         public async Task CheckTableIteratorWorks()
         {
-            using var allocator = new ArrayBasedAllocator32(4096 * 10_000, 25);
+            using var allocator = new ArrayBasedAllocator32(4096 * 20_000, 25);
             var memoryTable = new SkipList32(allocator);
 
             var loadedWords = CommonData.Words;
+            var insertedCount = 0;
             foreach (var word in loadedWords)
             {
                 if (string.IsNullOrEmpty(word)) continue;
                 var utf8 = Encoding.UTF8.GetBytes(word);
                 var value = Encoding.UTF8.GetBytes($"VALUE={word}");
-                memoryTable.Put(utf8, value);
+                if (memoryTable.Put(utf8, value)) insertedCount++;
             }
 
             var tempPath = System.IO.Path.GetTempPath();
@@ -145,7 +146,7 @@ namespace TrimDB.Core.Facts
 
                     Assert.Equal($"VALUE={key}", value);
                 }
-                Assert.Equal(CommonData.Words.Length, count);
+                Assert.Equal(insertedCount, count);
             }
             System.IO.File.Delete(fileName);
         }

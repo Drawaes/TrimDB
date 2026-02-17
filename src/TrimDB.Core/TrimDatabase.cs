@@ -2,11 +2,13 @@
 using System.Buffers;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using TrimDB.Core.Hashing;
 using TrimDB.Core.InMemory;
+using TrimDB.Core.KVLog;
 using TrimDB.Core.Storage;
 using TrimDB.Core.Storage.Blocks;
 using TrimDB.Core.Storage.Layers;
@@ -16,6 +18,7 @@ namespace TrimDB.Core
     public class TrimDatabase : IAsyncDisposable
     {
         private MemoryTable _skipList;
+        private MemoryTable _nextMemoryTable;
         private List<MemoryTable> _oldInMemoryTables = new List<MemoryTable>();
         private readonly List<StorageLayer> _storageLayers = new List<StorageLayer>();
         private readonly IHashFunction _hasher = new MurmurHash3();
@@ -24,6 +27,8 @@ namespace TrimDB.Core
         private IOScheduler _ioScheduler;
         private readonly BlockCache _blockCache;
         private TrimDatabaseOptions _options;
+        private KVLogManager? _walManager;
+        private int _disposed;
 
         public TrimDatabase(TrimDatabaseOptions options)
         {
@@ -48,10 +53,33 @@ namespace TrimDB.Core
             if (!_options.OpenReadOnly)
             {
                 _skipList = _options.MemoryTable();
+                _nextMemoryTable = _options.MemoryTable();
+
+                if (!_options.DisableWAL)
+                {
+                    var walPath = System.IO.Path.Combine(_databaseFolder, "wal.wal");
+                    _walManager = new FileBasedKVLogManager(walPath, waitForFlush: _options.WalWaitForFlush);
+                    _walManager.OnBatchFlushed = async (batch) =>
+                    {
+                        foreach (var (op, offset) in batch)
+                        {
+                            if (op.IsCommitMarker) continue;
+                            while (true)
+                            {
+                                var sl = Volatile.Read(ref _skipList);
+                                if (sl == null) break; // disposed
+                                bool ok = op.Deleted ? sl.Delete(op.Key.Span) : sl.Put(op.Key.Span, op.Value.Span);
+                                if (ok) { sl.UpdateWalHighWatermark(offset); break; }
+                                await SwitchInMemoryTable(sl);
+                            }
+                        }
+                    };
+                }
             }
         }
 
         internal TrimDatabaseOptions Options => _options;
+        internal KVLogManager? WalManager => _walManager;
 
         public async Task LoadAsync()
         {
@@ -61,7 +89,59 @@ namespace TrimDB.Core
             }
             if (!_options.OpenReadOnly)
             {
+                if (_walManager != null)
+                    await ReplayWalAsync();
+
                 _ioScheduler = new IOScheduler(1, (UnsortedStorageLayer)_storageLayers[0], this);
+
+                // Flush any memtables that filled during WAL replay
+                if (_replayPendingFlush != null)
+                {
+                    foreach (var pendingSl in _replayPendingFlush)
+                        await _ioScheduler.ScheduleSave(pendingSl);
+                    _replayPendingFlush = null;
+                }
+            }
+        }
+
+        private List<MemoryTable>? _replayPendingFlush;
+
+        private async Task ReplayWalAsync()
+        {
+            await foreach (var op in _walManager!.GetUncommittedOperations())
+            {
+                while (true)
+                {
+                    var sl = Volatile.Read(ref _skipList);
+                    if (sl == null) break;
+                    bool ok = op.Deleted ? sl.Delete(op.Key.Span) : sl.Put(op.Key.Span, op.Value.Span);
+                    if (ok) break;
+                    // Memtable full during replay — park it and install a fresh one
+                    await SwitchInMemoryTableForReplay(sl);
+                }
+            }
+        }
+
+        private async Task SwitchInMemoryTableForReplay(MemoryTable sl)
+        {
+            await _skipListLock.WaitAsync();
+            try
+            {
+                if (Volatile.Read(ref _skipList) == sl)
+                {
+                    var list = new List<MemoryTable>(_oldInMemoryTables) { sl };
+                    Interlocked.Exchange(ref _oldInMemoryTables, list);
+
+                    _replayPendingFlush ??= new List<MemoryTable>();
+                    _replayPendingFlush.Add(sl);
+
+                    var next = Interlocked.Exchange(ref _nextMemoryTable, null);
+                    Interlocked.Exchange(ref _skipList, next ?? _options.MemoryTable());
+                }
+            }
+            finally
+            {
+                _skipListLock.Release();
             }
         }
 
@@ -71,23 +151,28 @@ namespace TrimDB.Core
 
         public ValueTask<ReadOnlyMemory<byte>> GetAsync(ReadOnlySpan<byte> key)
         {
-            var sl = _skipList;
-            var result = sl.TryGet(key, out var value);
+            if (Volatile.Read(ref _disposed) == 1) throw new ObjectDisposedException(nameof(TrimDatabase));
 
-            if (result == SearchResult.Deleted)
+            var sl = Volatile.Read(ref _skipList);
+            if (sl != null)
             {
-                return default;
-            }
-            else if (result == SearchResult.Found)
-            {
-                var memory = value.ToArray();
-                return new ValueTask<ReadOnlyMemory<byte>>(memory);
+                var result = sl.TryGet(key, out var value);
+
+                if (result == SearchResult.Deleted)
+                {
+                    return default;
+                }
+                else if (result == SearchResult.Found)
+                {
+                    var memory = value.ToArray();
+                    return new ValueTask<ReadOnlyMemory<byte>>(memory);
+                }
             }
 
-            var oldLists = _oldInMemoryTables;
+            var oldLists = Volatile.Read(ref _oldInMemoryTables);
             foreach (var oldsl in oldLists)
             {
-                result = oldsl.TryGet(key, out value);
+                var result = oldsl.TryGet(key, out var value);
                 if (result == SearchResult.Deleted)
                 {
                     return new ValueTask<ReadOnlyMemory<byte>>(new ReadOnlyMemory<byte>());
@@ -147,11 +232,56 @@ namespace TrimDB.Core
 
         public ValueTask<bool> DeleteAsync(ReadOnlySpan<byte> key)
         {
-            throw new NotImplementedException();
+            if (Volatile.Read(ref _disposed) == 1) throw new ObjectDisposedException(nameof(TrimDatabase));
+
+            if (_walManager != null)
+            {
+                var keyCopy = key.ToArray(); // must copy — span can't cross await
+                return new ValueTask<bool>(DeleteViaWalAsync(keyCopy));
+            }
+
+            // WAL disabled: existing direct path
+            var sl = Volatile.Read(ref _skipList);
+            if (sl.Delete(key))
+            {
+                return new ValueTask<bool>(true);
+            }
+            // Memtable full — copy key and go async to switch memtable
+            var keyCopy2 = key.ToArray();
+            return DeleteAsyncSlow(keyCopy2);
+        }
+
+        private async Task<bool> DeleteViaWalAsync(byte[] key)
+        {
+            await _walManager!.LogKV(key, Memory<byte>.Empty, isDeleted: true);
+            return true; // memtable delete happened in OnBatchFlushed callback
+        }
+
+        private async ValueTask<bool> DeleteAsyncSlow(byte[] key)
+        {
+            while (true)
+            {
+                var sl = Volatile.Read(ref _skipList);
+                if (sl.Delete(key))
+                {
+                    return true;
+                }
+                await SwitchInMemoryTable(sl);
+            }
         }
 
         public async Task PutAsync(ReadOnlyMemory<byte> key, ReadOnlyMemory<byte> value)
         {
+            if (Volatile.Read(ref _disposed) == 1) throw new ObjectDisposedException(nameof(TrimDatabase));
+
+            if (_walManager != null)
+            {
+                // Single-writer: WAL consumer handles memtable insert via callback
+                await _walManager.LogKV(MemoryMarshal.AsMemory(key), MemoryMarshal.AsMemory(value), false);
+                return;
+            }
+
+            // WAL disabled: direct memtable write (existing concurrent behavior)
             while (true)
             {
                 var sl = Volatile.Read(ref _skipList);
@@ -174,8 +304,15 @@ namespace TrimDB.Core
                 {
                     var list = new List<MemoryTable>(_oldInMemoryTables) { sl };
                     Interlocked.Exchange(ref _oldInMemoryTables, list);
-                    Interlocked.Exchange(ref _skipList, _options.MemoryTable());
+
+                    // Use the pre-allocated memtable for an instant swap
+                    var next = Interlocked.Exchange(ref _nextMemoryTable, null);
+                    Interlocked.Exchange(ref _skipList, next ?? _options.MemoryTable());
+
                     await _ioScheduler.ScheduleSave(sl);
+
+                    // Pre-allocate the next memtable in the background
+                    _ = Task.Run(() => Volatile.Write(ref _nextMemoryTable, _options.MemoryTable()));
                 }
             }
             finally
@@ -186,7 +323,12 @@ namespace TrimDB.Core
 
         public async ValueTask DisposeAsync()
         {
-            if (_ioScheduler == null) return;
+            if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+            if (_ioScheduler == null)
+            {
+                _blockCache.Dispose();
+                return;
+            }
             // Set the current in memory database to null
             await _skipListLock.WaitAsync();
             try
@@ -200,6 +342,8 @@ namespace TrimDB.Core
                 _skipListLock.Release();
             }
             await _ioScheduler.DisposeAsync();
+            if (_walManager != null) await _walManager.DisposeAsync();
+            _blockCache.Dispose();
         }
     }
 }

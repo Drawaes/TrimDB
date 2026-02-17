@@ -24,5 +24,7 @@ namespace TrimDB.Core
 
         public bool DisableMerging { get; set; }
 
+        public bool DisableWAL { get; set; }
+        public bool WalWaitForFlush { get; set; } = true;
     }
 }
