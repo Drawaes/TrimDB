@@ -7,7 +7,7 @@ TrimDB fills a genuine gap in the .NET ecosystem. Go developers reach for Badger
 It is a Log-Structured Merge-Tree (LSM) storage engine - the same foundational architecture behind LevelDB, RocksDB, Cassandra, and Badger - implemented entirely in modern C# with no native binaries, no P/Invoke at the hot path, and no external processes.
 
 ```csharp
-var options = new TrimDatabaseOptions { DataDirectory = "./mydb" };
+var options = new TrimDatabaseOptions { DatabaseFolder = "./mydb" };
 await using var db = await TrimDatabase.OpenAsync(options);
 
 await db.PutAsync(key, value);
