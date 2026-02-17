@@ -1,10 +1,10 @@
 # TrimDB
 
-**An embeddable, transactional, concurrent key-value store for .NET — built from scratch in C#.**
+**An embeddable, transactional, concurrent key-value store for .NET - built from scratch in C#.**
 
 TrimDB fills a genuine gap in the .NET ecosystem. Go developers reach for Badger. C++ developers reach for RocksDB. .NET developers have historically had to P/Invoke into native binaries, accept cross-language debugging overhead, and manage native dependency deployment across platforms. TrimDB makes that compromise unnecessary.
 
-It is a Log-Structured Merge-Tree (LSM) storage engine — the same foundational architecture behind LevelDB, RocksDB, Cassandra, and Badger — implemented entirely in modern C# with no native binaries, no P/Invoke at the hot path, and no external processes.
+It is a Log-Structured Merge-Tree (LSM) storage engine - the same foundational architecture behind LevelDB, RocksDB, Cassandra, and Badger - implemented entirely in modern C# with no native binaries, no P/Invoke at the hot path, and no external processes.
 
 ```csharp
 var options = new TrimDatabaseOptions { DataDirectory = "./mydb" };
@@ -21,10 +21,10 @@ await db.DeleteAsync(key);
 
 The .NET runtime has reached a level of performance maturity where it is viable to build system-level storage primitives in managed code. TrimDB is a proof of that claim and a practical tool for developers who need:
 
-- **Embedded storage with no external dependencies** — no server process, no sockets, no config files. The database opens in your process and closes with `DisposeAsync`.
-- **Durability without ceremony** — writes are protected by a write-ahead log (WAL). Any `PutAsync` that returns has survived to the OS file system.
-- **Concurrent, transactional semantics** — multiple threads can read and write simultaneously. The design is lock-free at the memory layer and uses fine-grained sharding at the cache layer.
-- **Pure .NET** — written with `Span<T>`, `Memory<T>`, `System.IO.Pipelines`, `System.Threading.Channels`, `IAsyncEnumerable<T>`, `ValueTask`, and unsafe code for hot paths. It uses the full modern .NET API surface, not a subset.
+- **Embedded storage with no external dependencies** - no server process, no sockets, no config files. The database opens in your process and closes with `DisposeAsync`.
+- **Durability without ceremony** - writes are protected by a write-ahead log (WAL). Any `PutAsync` that returns has survived to the OS file system.
+- **Concurrent, transactional semantics** - multiple threads can read and write simultaneously. The design is lock-free at the memory layer and uses fine-grained sharding at the cache layer.
+- **Pure .NET** - written with `Span<T>`, `Memory<T>`, `System.IO.Pipelines`, `System.Threading.Channels`, `IAsyncEnumerable<T>`, `ValueTask`, and unsafe code for hot paths. It uses the full modern .NET API surface, not a subset.
 
 ---
 
@@ -36,9 +36,9 @@ TrimDB is a five-level LSM engine. Understanding the data lifecycle through thos
 
 Every write passes through three stages before it is considered durable:
 
-1. **WAL** — the operation is serialized to a `PipeWriter` channel and flushed to disk (one `fsync`-equivalent per batch of concurrent writes)
-2. **MemTable** — the key-value pair is inserted into a lock-free skip list backed by a pre-allocated slab
-3. **SSTable** — when the MemTable is full, a background flush serializes it to an immutable `.trim` file on disk
+1. **WAL** - the operation is serialized to a `PipeWriter` channel and flushed to disk (one `fsync`-equivalent per batch of concurrent writes)
+2. **MemTable** - the key-value pair is inserted into a lock-free skip list backed by a pre-allocated slab
+3. **SSTable** - when the MemTable is full, a background flush serializes it to an immutable `.trim` file on disk
 
 ```mermaid
 flowchart TD
@@ -60,7 +60,7 @@ flowchart TD
     end
 ```
 
-Reads always consult layers from newest to oldest and short-circuit the moment a definitive answer is found — either a value or a tombstone.
+Reads always consult layers from newest to oldest and short-circuit the moment a definitive answer is found - either a value or a tombstone.
 
 ---
 
@@ -78,14 +78,14 @@ Reads always consult layers from newest to oldest and short-circuit the moment a
 
 ### The MemTable: Slab-Allocated Skip List
 
-The active write buffer is a skip list — the canonical choice for LSM engines (used identically in LevelDB, RocksDB, and Badger) because it supports O(log n) search, insertion, and forward iteration while admitting lock-free concurrent access more naturally than balanced trees.
+The active write buffer is a skip list - the canonical choice for LSM engines (used identically in LevelDB, RocksDB, and Badger) because it supports O(log n) search, insertion, and forward iteration while admitting lock-free concurrent access more naturally than balanced trees.
 
 TrimDB's skip list is unusual in one important way: it does not allocate individual heap objects for nodes. Instead, every node is carved out of a single pre-allocated, GC-pinned `byte[]` slab. This has consequences that compound across the entire system:
 
-- **GC pressure eliminated** — the slab is allocated once at startup and pinned. The GC's reference-scanning pass never touches node objects. Write bursts do not translate into GC pauses.
-- **Cache locality** — node key bytes are embedded inline in the slab allocation. Skip list pointer traversals tend to land in recently-paged memory regions.
-- **Deterministic capacity** — when the slab is exhausted, `Put` returns `false` synchronously. `TrimDatabase` atomically switches to a pre-allocated fresh MemTable. There is no dynamic resizing and no ambiguity about when a flush is needed.
-- **Cache-line alignment** — allocations are padded to 64-byte boundaries. No two nodes share a cache line; there is no false sharing under concurrent writes.
+- **GC pressure eliminated** - the slab is allocated once at startup and pinned. The GC's reference-scanning pass never touches node objects. Write bursts do not translate into GC pauses.
+- **Cache locality** - node key bytes are embedded inline in the slab allocation. Skip list pointer traversals tend to land in recently-paged memory regions.
+- **Deterministic capacity** - when the slab is exhausted, `Put` returns `false` synchronously. `TrimDatabase` atomically switches to a pre-allocated fresh MemTable. There is no dynamic resizing and no ambiguity about when a flush is needed.
+- **Cache-line alignment** - allocations are padded to 64-byte boundaries. No two nodes share a cache line; there is no false sharing under concurrent writes.
 
 The node layout for the 32-bit variant:
 
@@ -119,7 +119,7 @@ Two variants exist: `SkipList32` (32-bit offsets into a `byte[]`, current defaul
 | sentinel (4 bytes = -2) | committedUpToOffset (8 bytes) |
 ```
 
-The channel design means the consumer can drain an entire batch of concurrent writes, serialize them all into the `PipeWriter` buffer, issue a single `FlushAsync` (one OS-level flush), and acknowledge all of them in one pass. This is group commit — the same technique used by PostgreSQL — and it means `fsync` cost is amortized across all concurrent writers rather than paid per operation.
+The channel design means the consumer can drain an entire batch of concurrent writes, serialize them all into the `PipeWriter` buffer, issue a single `FlushAsync` (one OS-level flush), and acknowledge all of them in one pass. This is group commit - the same technique used by PostgreSQL - and it means `fsync` cost is amortized across all concurrent writers rather than paid per operation.
 
 `WalWaitForFlush` is a configurable option: wait for OS acknowledgment for strict durability, or skip the wait for maximum throughput at the cost of a small durability window.
 
@@ -174,7 +174,7 @@ The slot directory is kept in key-sorted order and stores a 16-bit FNV-1a key ha
 
 ### The XOR Filter
 
-Before performing any binary search on SSTable blocks, each lookup first consults an XOR filter. The XOR filter is a probabilistic data structure that answers "is this key definitely absent from this file?" with zero false negatives. It achieves approximately 8 bits per key at a ~0.4% false positive rate — roughly 20% more space-efficient than a standard Bloom filter at equivalent accuracy.
+Before performing any binary search on SSTable blocks, each lookup first consults an XOR filter. The XOR filter is a probabilistic data structure that answers "is this key definitely absent from this file?" with zero false negatives. It achieves approximately 8 bits per key at a ~0.4% false positive rate - roughly 20% more space-efficient than a standard Bloom filter at equivalent accuracy.
 
 Construction peels an XOR graph over all keys (similar to belief propagation), assigning 8-bit fingerprints to a table of length `1.23 * n`. Lookup checks three positions derived from the key's MurmurHash3 64-bit hash (via bit rotation) and verifies that their XOR equals the expected fingerprint.
 
@@ -232,7 +232,7 @@ The MemTable's pinned slab means GC collections never pause skip list operations
 
 ### Amortized WAL Flushing (Group Commit)
 
-The channel-based WAL consumer naturally batches concurrent writers. A single `fsync` covers every write that arrived during the consumer's current drain cycle. In a system with N concurrent writers, this means N-times the write throughput with no per-write durability compromise — the same technique PostgreSQL calls group commit.
+The channel-based WAL consumer naturally batches concurrent writers. A single `fsync` covers every write that arrived during the consumer's current drain cycle. In a system with N concurrent writers, this means N-times the write throughput with no per-write durability compromise - the same technique PostgreSQL calls group commit.
 
 ### Lock-Free MemTable Switching
 
@@ -381,7 +381,7 @@ TrimDB is not a toy or a teaching example. It is an attempt to close a real gap 
 
 The guiding principle is that each component should do exactly one thing and define a clean interface to everything else. The skip list allocates and searches. The WAL serializes and recovers. The IOScheduler flushes and compacts. The block cache loads and evicts. None of these concerns bleeds into another. The interfaces between them are narrow and explicit.
 
-This reflects both the Unix philosophy — small, sharp tools that compose — and the practical reality that a storage engine built for the long term must be debuggable at the component level. When something goes wrong in a database, you need to be able to isolate the problem to a single layer.
+This reflects both the Unix philosophy - small, sharp tools that compose - and the practical reality that a storage engine built for the long term must be debuggable at the component level. When something goes wrong in a database, you need to be able to isolate the problem to a single layer.
 
 The choice of LSM as the foundational architecture reflects an honest accounting of modern storage hardware. Sequential writes are cheap; random writes are not. Reads bear a cost in LSM (multi-file lookups for cold keys) but that cost is bounded by XOR filters, the block offset index, and the block cache working together. The compaction background process pays off the read-amplification debt continuously and invisibly to the caller.
 
@@ -399,6 +399,6 @@ Areas under active consideration include MVCC-style transactions (skip list node
 
 ## References
 
-1. O'Neil et al., "The Log-Structured Merge-Tree (LSM-Tree)" — https://www.cs.umb.edu/~poneil/lsmtree.pdf
-2. Lu et al., "WiscKey: Separating Keys from Values in SSD-Conscious Storage" — key-value separation design principle
-3. Graf, "Xor Filters: Faster and Smaller Than Bloom and Cuckoo Filters" — the probabilistic filter used in SSTables
+1. O'Neil et al., "The Log-Structured Merge-Tree (LSM-Tree)" - https://www.cs.umb.edu/~poneil/lsmtree.pdf
+2. Lu et al., "WiscKey: Separating Keys from Values in SSD-Conscious Storage" - key-value separation design principle
+3. Graf, "Xor Filters: Faster and Smaller Than Bloom and Cuckoo Filters" - the probabilistic filter used in SSTables
