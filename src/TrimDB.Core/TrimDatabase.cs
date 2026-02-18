@@ -28,6 +28,7 @@ namespace TrimDB.Core
         private readonly BlockCache _blockCache;
         private TrimDatabaseOptions _options;
         private KVLogManager? _walManager;
+        private ManifestManager? _manifest;
         private int _disposed;
 
         public TrimDatabase(TrimDatabaseOptions options)
@@ -83,10 +84,44 @@ namespace TrimDB.Core
 
         public async Task LoadAsync()
         {
+            // Initialize manifest if enabled
+            ManifestData? manifestData = null;
+            if (!_options.DisableManifest)
+            {
+                _manifest = new ManifestManager(_databaseFolder);
+                _manifest.CleanupTempFile();
+                if (_manifest.Exists)
+                    manifestData = _manifest.TryRead();
+            }
+
+            // Clean up orphaned files BEFORE loading (orphans may be invalid SSTables)
+            if (manifestData != null)
+            {
+                foreach (var sl in _storageLayers)
+                {
+                    var authoritative = new HashSet<int>(manifestData.GetFiles(sl.Level));
+                    foreach (var tf in sl.GetTables())
+                    {
+                        if (!authoritative.Contains(tf.FileId.FileId))
+                        {
+                            sl.RemoveTable(tf);
+                            System.IO.File.Delete(tf.FileName);
+                        }
+                    }
+                }
+            }
+
             foreach (var sl in _storageLayers)
             {
                 await sl.LoadLayer().ConfigureAwait(false);
             }
+
+            if (manifestData == null && _manifest != null)
+            {
+                // First run (no manifest yet): write initial manifest from current state
+                await WriteManifestAsync();
+            }
+
             if (!_options.OpenReadOnly)
             {
                 if (_walManager != null)
@@ -198,6 +233,20 @@ namespace TrimDB.Core
                 list.Remove(sl);
                 if (Interlocked.CompareExchange(ref _oldInMemoryTables, list, memTable) == memTable) return;
             }
+        }
+
+        internal async Task WriteManifestAsync()
+        {
+            if (_manifest == null) return;
+
+            var data = new ManifestData();
+            foreach (var sl in _storageLayers)
+            {
+                var indices = sl.GetFileIndices();
+                foreach (var idx in indices)
+                    data.AddFile(sl.Level, idx);
+            }
+            await _manifest.WriteAsync(data);
         }
 
         public async ValueTask<ReadOnlyMemory<byte>> GetAsyncInternal(ReadOnlyMemory<byte> key)

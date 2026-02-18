@@ -63,6 +63,15 @@ namespace TrimDB.Core.Storage.Layers
 
         public abstract ValueTask<SearchResultValue> GetAsync(ReadOnlyMemory<byte> key, ulong hash);
 
+        internal int[] GetFileIndices()
+        {
+            var tfs = Volatile.Read(ref _tableFiles);
+            var result = new int[tfs.Length];
+            for (var i = 0; i < tfs.Length; i++)
+                result[i] = tfs[i].FileId.FileId;
+            return result;
+        }
+
         public string GetNextFileName()
         {
             var nextFileIndex = Interlocked.Increment(ref _maxFileIndex);

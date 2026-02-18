@@ -26,6 +26,7 @@ namespace TrimDB.Core.Facts
                 BlockCache = () => new MMapBlockCache(),
                 DisableMerging = true,
                 DisableWAL = true,
+                DisableManifest = true,
                 // Small allocator to force flushes
                 MemoryTable = () => new SkipList32(new ArrayBasedAllocator32(4096 * 100, 25))
             };

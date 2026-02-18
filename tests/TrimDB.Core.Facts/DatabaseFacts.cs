@@ -39,7 +39,7 @@ namespace TrimDB.Core.Facts
         {
             var loadedWords = CommonData.Words;
 
-            var dbOptions = new TrimDatabaseOptions() { DatabaseFolder = _folder, DisableWAL = true };
+            var dbOptions = new TrimDatabaseOptions() { DatabaseFolder = _folder, DisableWAL = true, DisableManifest = true };
             _db = new TrimDatabase(dbOptions);
 
             await _db.LoadAsync();

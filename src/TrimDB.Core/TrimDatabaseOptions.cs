@@ -26,5 +26,7 @@ namespace TrimDB.Core
 
         public bool DisableWAL { get; set; }
         public bool WalWaitForFlush { get; set; } = true;
+
+        public bool DisableManifest { get; set; }
     }
 }

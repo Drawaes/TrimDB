@@ -430,6 +430,7 @@ namespace TrimDB.Core.Facts
                     DatabaseFolder = folder,
                     BlockCache = () => new MMapBlockCache(),
                     DisableMerging = true,
+                    DisableManifest = true,
                     MemoryTable = () => new SkipList32(new ArrayBasedAllocator32(4096 * 1000, 25))
                 };
 
@@ -467,6 +468,7 @@ namespace TrimDB.Core.Facts
                     DatabaseFolder = folder,
                     BlockCache = () => new MMapBlockCache(),
                     DisableMerging = true,
+                    DisableManifest = true,
                     MemoryTable = () => new SkipList32(new ArrayBasedAllocator32(4096 * 1000, 25))
                 };
 
@@ -506,6 +508,7 @@ namespace TrimDB.Core.Facts
                     DatabaseFolder = folder,
                     BlockCache = () => new MMapBlockCache(),
                     DisableMerging = true,
+                    DisableManifest = true,
                     MemoryTable = () => new SkipList32(new ArrayBasedAllocator32(4096 * 10_000, 25))
                 };
 
@@ -559,6 +562,7 @@ namespace TrimDB.Core.Facts
                     DatabaseFolder = folder,
                     BlockCache = () => new MMapBlockCache(),
                     DisableMerging = true,
+                    DisableManifest = true,
                     // Tiny allocator to trigger flush
                     MemoryTable = () => new SkipList32(new ArrayBasedAllocator32(4096 * 50, 25))
                 };
@@ -606,6 +610,7 @@ namespace TrimDB.Core.Facts
                     DatabaseFolder = folder,
                     BlockCache = () => new MMapBlockCache(),
                     DisableMerging = true,
+                    DisableManifest = true,
                     MemoryTable = () => new SkipList32(new ArrayBasedAllocator32(4096 * 10_000, 25))
                 };
 

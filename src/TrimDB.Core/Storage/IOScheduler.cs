@@ -176,6 +176,9 @@ namespace TrimDB.Core.Storage
                 sortedStorage.RemoveTable(upperTable);
             }
             _logger.LogInformation("Merge for level {Level} took {ElapsedMs}ms", sortedStorage.Level, sw.ElapsedMilliseconds);
+
+            await _database.WriteManifestAsync();
+
             foreach (var file in overlapping)
             {
                 file.Dispose();
@@ -194,6 +197,8 @@ namespace TrimDB.Core.Storage
             await tableFile.LoadAsync();
             layerBelow.AddTableFile(tableFile);
             sortedStorage.RemoveTable(file);
+
+            await _database.WriteManifestAsync();
 
             file.Dispose();
             System.IO.File.Delete(file.FileName);
@@ -228,6 +233,8 @@ namespace TrimDB.Core.Storage
                 nextLayer.AddAndRemoveTableFiles(writer.NewTableFiles, overlapped);
                 unsortedLayer.RemoveTable(oldestTable);
             }
+
+            await _database.WriteManifestAsync();
 
             foreach (var file in overlapped)
             {
@@ -290,6 +297,8 @@ namespace TrimDB.Core.Storage
                     await tableFile.LoadAsync();
                     _storageLayer.AddTableFile(tableFile);
                     _database.RemoveMemoryTable(sl);
+
+                    await _database.WriteManifestAsync();
 
                     // Checkpoint WAL: record that this memtable's entries are now on disk.
                     // Fire-and-forget to avoid deadlock: the WAL consumer may be blocked

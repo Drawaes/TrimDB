@@ -57,6 +57,7 @@ namespace TrimDB.Core.Facts
                     BlockCache = () => capturedCache,
                     DisableMerging = true,
                     DisableWAL = true,
+                    DisableManifest = true,
                     MemoryTable = () => new SkipList32(new ArrayBasedAllocator32(4096 * 50, 25)),
                 };
 
@@ -123,6 +124,7 @@ namespace TrimDB.Core.Facts
                     BlockCache = () => capturedCache,
                     DisableMerging = true,
                     DisableWAL = true,
+                    DisableManifest = true,
                     MemoryTable = () => new SkipList32(new ArrayBasedAllocator32(4096 * 50, 25)),
                 };
 
@@ -178,6 +180,7 @@ namespace TrimDB.Core.Facts
                     BlockCache = () => capturedCache,
                     DisableMerging = true,
                     DisableWAL = true,
+                    DisableManifest = true,
                     MemoryTable = () => new SkipList32(new ArrayBasedAllocator32(4096 * 50, 25)),
                 };
 

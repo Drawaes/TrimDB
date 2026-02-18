@@ -199,6 +199,7 @@ namespace TrimDB.Core.Facts
                     BlockCache = () => new MMapBlockCache(),
                     DisableMerging = true,
                     DisableWAL = true,
+                    DisableManifest = true,
                     // Small allocator to force overflow quickly
                     MemoryTable = () => new SkipList32(new ArrayBasedAllocator32(4096 * 100, 25))
                 };
@@ -270,6 +271,7 @@ namespace TrimDB.Core.Facts
                     BlockCache = () => new MMapBlockCache(),
                     DisableMerging = true,
                     DisableWAL = true,
+                    DisableManifest = true,
                     // Small allocator to trigger overflow
                     MemoryTable = () => new SkipList32(new ArrayBasedAllocator32(4096 * 200, 25))
                 };
