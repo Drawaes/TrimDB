@@ -15,6 +15,8 @@ using TrimDB.Core.Storage.Blocks.CachePrototype;
 using TrimDB.Core.Storage.Blocks.MemoryMappedCache;
 using Xunit;
 
+#pragma warning disable CS0618 // Obsolete SkipList64 types used in tests
+
 namespace TrimDB.Core.Facts
 {
     public class TableFileFacts

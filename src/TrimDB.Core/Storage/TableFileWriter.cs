@@ -1,17 +1,9 @@
-﻿using System;
-using System.Buffers.Binary;
+using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO.Pipelines;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics.X86;
-using System.Text;
 using System.Threading.Tasks;
 using TrimDB.Core.InMemory;
-using TrimDB.Core.InMemory.SkipList64;
 using TrimDB.Core.Storage.Blocks;
-using TrimDB.Core.Storage.Filters;
 using TrimDB.Core.Storage.MetaData;
 
 namespace TrimDB.Core.Storage
@@ -19,7 +11,6 @@ namespace TrimDB.Core.Storage
     public class TableFileWriter
     {
         private readonly string _fileName;
-        private uint _crc;
 
         private TableMetaData _metaData;
 
@@ -53,7 +44,7 @@ namespace TrimDB.Core.Storage
 
         private void WriteTOC(PipeWriter pipeWriter, ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, int count)
         {
-            var currentLocation = _metaData.BlockCount * FileConsts.PageSize;
+            var currentLocation = (long)_metaData.BlockCount * FileConsts.PageSize;
 
             var filterSize = _metaData.Filter.WriteToPipe(pipeWriter);
             _metaData.AddTableEntry(currentLocation, filterSize, TableOfContentsEntryType.Filter);
@@ -66,6 +57,10 @@ namespace TrimDB.Core.Storage
 
             var blockOffsetsSize = _metaData.WriteBlockOffsets(pipeWriter);
             _metaData.AddTableEntry(currentLocation, blockOffsetsSize, TableOfContentsEntryType.BlockOffsets);
+            currentLocation += blockOffsetsSize;
+
+            var crcSize = _metaData.WriteBlockCRCs(pipeWriter);
+            _metaData.AddTableEntry(currentLocation, crcSize, TableOfContentsEntryType.BlockCRCs);
 
             _metaData.WriteTOC(pipeWriter);
         }
@@ -74,44 +69,23 @@ namespace TrimDB.Core.Storage
         {
             using var blockWriter = new BlockWriter(iterator, _metaData.Filter);
 
+            var blockIndex = 0;
             while (blockWriter.MoreToWrite)
             {
                 var span = pipeWriter.GetSpan(FileConsts.PageSize);
                 span = span[..FileConsts.PageSize];
-                _metaData.AddBlockOffset(_metaData.BlockCount * FileConsts.PageSize, iterator.Current.Key.ToArray());
+                _metaData.AddBlockOffset((long)_metaData.BlockCount * FileConsts.PageSize, iterator.Current.Key.ToArray());
                 blockWriter.WriteBlock(span);
+
+                var crc = Crc32Helper.Compute(span[..FileConsts.PageSize]);
+                _metaData.SetBlockCRC(blockIndex, crc);
+                blockIndex++;
+
                 pipeWriter.Advance(FileConsts.PageSize);
             }
             counter = blockWriter.Count;
             _metaData.FirstKey = blockWriter.FirstKey;
             _metaData.LastKey = blockWriter.LastKey;
-        }
-
-        // TODO: Complete CRC Check
-        private uint CalculateCRC(uint crc, ReadOnlySpan<byte> span)
-        {
-            ref var mem = ref MemoryMarshal.GetReference(span);
-            var remaining = span.Length;
-
-            while (remaining >= 4)
-            {
-                crc = Sse42.Crc32(crc, Unsafe.As<byte, uint>(ref mem));
-                mem = ref Unsafe.Add(ref mem, sizeof(uint));
-                remaining -= sizeof(uint);
-            }
-
-            if (remaining >= 2)
-            {
-                crc = Sse42.Crc32(crc, Unsafe.As<byte, ushort>(ref mem));
-                mem = ref Unsafe.Add(ref mem, sizeof(ushort));
-                remaining -= sizeof(ushort);
-            }
-
-            if (remaining == 1)
-            {
-                crc = Sse42.Crc32(crc, mem);
-            }
-            return crc;
         }
     }
 }

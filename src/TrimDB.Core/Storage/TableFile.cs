@@ -127,7 +127,17 @@ namespace TrimDB.Core.Storage
         public async Task<BlockReader> GetKVBlock(int blockId)
         {
             if (blockId >= BlockCount) throw new IndexOutOfRangeException();
-            var br = new BlockReader(await _blockCache.GetBlock(FileId, blockId));
+            var owner = await _blockCache.GetBlock(FileId, blockId);
+
+            if (_metaData!.HasBlockCRCs)
+            {
+                var expected = _metaData.GetBlockCRC(blockId);
+                var actual = Blocks.Crc32Helper.Compute(owner.Memory.Span);
+                if (actual != expected)
+                    throw new System.IO.InvalidDataException($"CRC mismatch on block {blockId} of {_fileName}");
+            }
+
+            var br = new BlockReader(owner);
             return br;
         }
 

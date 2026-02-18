@@ -1,13 +1,16 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Text;
+using System.Runtime.Versioning;
 using System.Threading;
 using static TrimDB.Core.Interop.Windows.Memory;
 
+#pragma warning disable CS0618 // Obsolete SkipList64 types reference each other
+
 namespace TrimDB.Core.InMemory.SkipList64
 {
+    [SupportedOSPlatform("windows")]
+    [Obsolete("Use SkipList32 instead. Will be removed in a future release.")]
     public class NativeAllocator64 : SkipListAllocator64
     {
         private readonly IntPtr _pointer;

@@ -137,6 +137,7 @@ namespace TrimDB.Core.Storage.Layers
                 }
 
                 newTableFiles.CopyTo(newTable, newTable.Length - newTableFiles.Count);
+                Array.Sort(newTable, (a, b) => a.FirstKey.Span.SequenceCompareTo(b.FirstKey.Span));
                 if (Interlocked.CompareExchange(ref _tableFiles, newTable, tfs) == tfs)
                 {
                     return;

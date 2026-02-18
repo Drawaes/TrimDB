@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
@@ -8,14 +8,16 @@ namespace TrimDB.Core.Storage.Layers
 {
     public class UnsortedStorageLayer : StorageLayer
     {
-        public override int MaxFilesAtLayer => 6;
+        private readonly int _maxFilesAtLayer;
+
+        public override int MaxFilesAtLayer => _maxFilesAtLayer;
 
         public override int NumberOfTables => _tableFiles.Length;
 
-        public UnsortedStorageLayer(int level, string databaseFolder, BlockCache blockCache)
+        public UnsortedStorageLayer(int level, string databaseFolder, BlockCache blockCache, int maxFiles = 6)
             : base(databaseFolder, level, blockCache, 0)
         {
-
+            _maxFilesAtLayer = maxFiles;
         }
 
         public override async ValueTask<SearchResultValue> GetAsync(ReadOnlyMemory<byte> key, ulong hash)

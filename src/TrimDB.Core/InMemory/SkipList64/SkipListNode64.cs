@@ -8,6 +8,7 @@ using System.Threading;
 
 namespace TrimDB.Core.InMemory.SkipList64
 {
+    [Obsolete("Use SkipList32 instead. Will be removed in a future release.")]
     public ref struct SkipListNode64
     {
         private readonly Span<byte> _nodeMemory;

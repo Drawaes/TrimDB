@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
@@ -12,16 +12,18 @@ namespace TrimDB.Core.Storage.Filters
 {
     public class XorFilter : Filter
     {
-        private const int BitsPerFingerPrint = 8;
+        private const int BitsPerFingerPrint = 16;
         private const int Hashes = 3;
-        private const byte HeaderValue = 1;
+        private const byte HeaderValue8 = 1;   // Legacy 8-bit format
+        private const byte HeaderValue16 = 2;  // New 16-bit format
         private const int SizeFactor = 123;
 
         private int _size;
         private int _arrayLength;
         private int _blockLength;
         private long _seed;
-        private byte[] _fingerPrints;
+        private ushort[] _fingerPrints;
+        private bool _is8Bit; // true when loaded from legacy 8-bit format
         private readonly List<long> _keys;
         private readonly MurmurHash3 _hash = new MurmurHash3();
         private readonly bool _useMurMur;
@@ -135,18 +137,18 @@ namespace TrimDB.Core.Storage.Filters
 
             } while (reverseOrderPos != _size);
 
-            var fp = new byte[m];
+            var fp = new ushort[m];
             for (var i = reverseOrderPos - 1; i >= 0; i--)
             {
                 var k = reverseOrder[i];
                 var change = -1;
                 var hash = (long)MixSplit((ulong)k, (ulong)_seed);
-                var xor = FingerPrint(hash);
+                var xor = (ushort)FingerPrint(hash);
                 for (var hi = 0; hi < Hashes; hi++)
                 {
                     var h = GetHash(k, _seed, hi);
-                    int found = reverseH[i];
-                    if (found == hi)
+                    int foundIdx = reverseH[i];
+                    if (foundIdx == hi)
                     {
                         change = h;
                     }
@@ -155,9 +157,10 @@ namespace TrimDB.Core.Storage.Filters
                         xor ^= fp[h];
                     }
                 }
-                fp[change] = (byte)xor;
+                fp[change] = xor;
             }
             _fingerPrints = fp;
+            _is8Bit = false;
         }
 
         public override bool AddKey(ReadOnlySpan<byte> key)
@@ -186,25 +189,30 @@ namespace TrimDB.Core.Storage.Filters
             var h1 = Reduce(r1, (uint)_blockLength) + _blockLength;
             var h2 = Reduce(r2, (uint)_blockLength) + 2 * _blockLength;
             f ^= _fingerPrints[h0] ^ _fingerPrints[h1] ^ _fingerPrints[h2];
-            return (f & 0xff) == 0;
+            var mask = _is8Bit ? 0xff : 0xffff;
+            return (f & mask) == 0;
         }
 
         public override int WriteToPipe(PipeWriter pipeWriter)
         {
             var uniq = _keys.Distinct().ToArray();
-            var coll = (uniq.Count() - _keys.Count) / (double)_keys.Count;
 
             LoadFromKeys(uniq);
-            var sizeToSave = sizeof(byte) + sizeof(int) + sizeof(long) + _fingerPrints.Length;
+            var fingerprintBytes = _fingerPrints.Length * sizeof(ushort);
+            var sizeToSave = sizeof(byte) + sizeof(long) + sizeof(int) + fingerprintBytes;
             var span = pipeWriter.GetSpan(sizeToSave);
 
-            span[0] = HeaderValue;
+            span[0] = HeaderValue16;
             span = span.Slice(1);
             BinaryPrimitives.WriteInt64LittleEndian(span, _seed);
             span = span.Slice(sizeof(long));
             BinaryPrimitives.WriteInt32LittleEndian(span, _blockLength);
             span = span.Slice(sizeof(int));
-            _fingerPrints.AsSpan().CopyTo(span);
+            // Write ushort[] as little-endian bytes
+            for (var i = 0; i < _fingerPrints.Length; i++)
+            {
+                BinaryPrimitives.WriteUInt16LittleEndian(span[(i * sizeof(ushort))..], _fingerPrints[i]);
+            }
             pipeWriter.Advance(sizeToSave);
             return sizeToSave;
         }
@@ -213,17 +221,47 @@ namespace TrimDB.Core.Storage.Filters
         {
             var data = memory.Span;
             var header = data[0];
-            if (header != HeaderValue)
+            if (header == HeaderValue8)
+            {
+                LoadFromBlock8Bit(data.Slice(1));
+            }
+            else if (header == HeaderValue16)
+            {
+                LoadFromBlock16Bit(data.Slice(1));
+            }
+            else
             {
                 throw new InvalidDataException("The header for the XOR filter is incorrect");
             }
-            data = data.Slice(1);
+        }
+
+        private void LoadFromBlock8Bit(ReadOnlySpan<byte> data)
+        {
+            _is8Bit = true;
             _seed = BinaryPrimitives.ReadInt64LittleEndian(data);
             data = data.Slice(sizeof(long));
             _blockLength = BinaryPrimitives.ReadInt32LittleEndian(data);
             data = data.Slice(sizeof(int));
-            _fingerPrints = new byte[data.Length];
-            data.CopyTo(_fingerPrints);
+            // Promote 8-bit fingerprints to 16-bit array
+            _fingerPrints = new ushort[data.Length];
+            for (var i = 0; i < data.Length; i++)
+            {
+                _fingerPrints[i] = data[i];
+            }
+        }
+
+        private void LoadFromBlock16Bit(ReadOnlySpan<byte> data)
+        {
+            _is8Bit = false;
+            _seed = BinaryPrimitives.ReadInt64LittleEndian(data);
+            data = data.Slice(sizeof(long));
+            _blockLength = BinaryPrimitives.ReadInt32LittleEndian(data);
+            data = data.Slice(sizeof(int));
+            _fingerPrints = new ushort[data.Length / sizeof(ushort)];
+            for (var i = 0; i < _fingerPrints.Length; i++)
+            {
+                _fingerPrints[i] = BinaryPrimitives.ReadUInt16LittleEndian(data[(i * sizeof(ushort))..]);
+            }
         }
 
         private static ulong MixSplit(ulong key, ulong seed)

@@ -8,7 +8,7 @@ namespace TrimDB.Core.Storage
     {
         internal const int PageSize = 4096;
         internal const uint MagicNumber = 0xDEADBEAF;
-        internal const int Version = 1;
+        internal const int Version = 2;
         internal const int TocEntryOffset = 12;
     }
 }

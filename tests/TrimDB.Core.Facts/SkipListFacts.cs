@@ -12,6 +12,8 @@ using TrimDB.Core.InMemory.SkipList64;
 using TrimDB.Core.Storage;
 using Xunit;
 
+#pragma warning disable CS0618 // Obsolete SkipList64 types used in tests
+
 namespace TrimDB.Core.Facts
 {
     public class SkipListFacts

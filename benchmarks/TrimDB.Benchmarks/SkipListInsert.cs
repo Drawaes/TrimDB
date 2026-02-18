@@ -15,6 +15,8 @@ using TrimDB.Core.InMemory;
 using TrimDB.Core.InMemory.SkipList32;
 using TrimDB.Core.InMemory.SkipList64;
 
+#pragma warning disable CS0618 // Obsolete SkipList64 types used in benchmarks
+
 namespace TrimDB.Benchmarks
 {
     [MemoryDiagnoser]

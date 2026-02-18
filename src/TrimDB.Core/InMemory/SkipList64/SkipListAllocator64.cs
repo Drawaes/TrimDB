@@ -3,8 +3,11 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text;
 
+#pragma warning disable CS0618 // Obsolete SkipList64 types reference each other
+
 namespace TrimDB.Core.InMemory.SkipList64
 {
+    [Obsolete("Use SkipList32 instead. Will be removed in a future release.")]
     public abstract class SkipListAllocator64 : IDisposable
     {
         protected readonly SkipListHeightGenerator64 HeightGenerator;

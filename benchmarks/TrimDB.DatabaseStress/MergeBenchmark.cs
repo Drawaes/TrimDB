@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -52,15 +52,6 @@ namespace TrimDB.DatabaseStress
         {
             var merger = new TableFileMerger(_tableFiles.Select(f => f.GetAsyncEnumerator()).ToArray());
             var mWriter = new TableFileMergeWriter(_storageLayer, _cache, loadNewFiles: false);
-
-            await mWriter.WriteFromMerger(merger);
-        }
-
-        [Benchmark]
-        public async Task MergeFiles2()
-        {
-            var merger = new TableFileMerger(_tableFiles.Select(f => f.GetAsyncEnumerator()).ToArray());
-            var mWriter = new TableFileMergeWriter2(_storageLayer, _cache, loadNewFiles: false);
 
             await mWriter.WriteFromMerger(merger);
         }

@@ -19,6 +19,38 @@ namespace TrimDB.Core.Storage.MetaData
         private List<TableOfContentsEntry> _tocEntries = new List<TableOfContentsEntry>();
         private List<(long offset, ReadOnlyMemory<byte> firstKey)> _blockEntries = new List<(long, ReadOnlyMemory<byte>)>();
         private Filter _filter;
+        private uint[]? _blockCRCs;
+
+        public bool HasBlockCRCs => _blockCRCs != null;
+
+        public void SetBlockCRC(int blockIndex, uint crc)
+        {
+            if (_blockCRCs == null)
+            {
+                // Pre-size to a reasonable initial capacity (enough for a 16MB SSTable at 4KB blocks)
+                _blockCRCs = new uint[Math.Max(blockIndex + 1, 4096)];
+            }
+            else if (blockIndex >= _blockCRCs.Length)
+            {
+                Array.Resize(ref _blockCRCs, Math.Max(blockIndex + 1, _blockCRCs.Length * 2));
+            }
+            _blockCRCs[blockIndex] = crc;
+        }
+
+        public uint GetBlockCRC(int blockIndex) => _blockCRCs![blockIndex];
+
+        public int WriteBlockCRCs(PipeWriter pipeWriter)
+        {
+            var count = BlockCount;
+            var size = count * sizeof(uint);
+            var span = pipeWriter.GetSpan(size);
+            for (var i = 0; i < count; i++)
+            {
+                BinaryPrimitives.WriteUInt32LittleEndian(span[(i * sizeof(uint))..], _blockCRCs![i]);
+            }
+            pipeWriter.Advance(size);
+            return size;
+        }
 
         public int BlockCount => _blockEntries.Count;
         public ReadOnlyMemory<byte> FirstKey { get; set; }
@@ -80,6 +112,14 @@ namespace TrimDB.Core.Storage.MetaData
             {
                 ReadStatistics(metaData, mem.Memory);
             }
+
+            var crcEntry = metaData._tocEntries.SingleOrDefault(te => te.EntryType == TableOfContentsEntryType.BlockCRCs);
+            if (crcEntry.Length > 0)
+            {
+                using var mem = await GetTOCMemoryByEntry(fs, crcEntry);
+                ReadBlockCRCs(metaData, mem.Memory);
+            }
+
             return metaData;
         }
 
@@ -94,6 +134,11 @@ namespace TrimDB.Core.Storage.MetaData
 
             var tocSize = BinaryPrimitives.ReadInt32LittleEndian(buffer[^8..]);
             var version = BinaryPrimitives.ReadInt32LittleEndian(buffer[^12..]);
+
+            if (version > FileConsts.Version)
+            {
+                throw new InvalidOperationException($"Unknown file version {version}. Maximum supported version is {FileConsts.Version}.");
+            }
 
             buffer = buffer[^tocSize..^(sizeof(int) * 3)];
 
@@ -129,6 +174,17 @@ namespace TrimDB.Core.Storage.MetaData
         }
 
         private static void ReadFilter(TableMetaData metaData, ReadOnlyMemory<byte> memory) => metaData._filter.LoadFromBlock(memory);
+
+        private static void ReadBlockCRCs(TableMetaData metaData, ReadOnlyMemory<byte> memory)
+        {
+            var span = memory.Span;
+            var count = span.Length / sizeof(uint);
+            metaData._blockCRCs = new uint[count];
+            for (var i = 0; i < count; i++)
+            {
+                metaData._blockCRCs[i] = BinaryPrimitives.ReadUInt32LittleEndian(span[(i * sizeof(uint))..]);
+            }
+        }
 
         private static void ReadStatistics(TableMetaData metaData, ReadOnlyMemory<byte> memory)
         {
@@ -234,6 +290,11 @@ namespace TrimDB.Core.Storage.MetaData
         private static async Task<TOCMemory> GetTOCMemory(FileStream fs, TableMetaData metaData, TableOfContentsEntryType entryType)
         {
             var entry = metaData._tocEntries.Single(te => te.EntryType == entryType);
+            return await GetTOCMemoryByEntry(fs, entry);
+        }
+
+        private static async Task<TOCMemory> GetTOCMemoryByEntry(FileStream fs, TableOfContentsEntry entry)
+        {
             var owner = MemoryPool<byte>.Shared.Rent(entry.Length);
             var mem = owner.Memory.Slice(0, entry.Length);
             await GetBlockFromFile(fs, entry.Offset, mem);

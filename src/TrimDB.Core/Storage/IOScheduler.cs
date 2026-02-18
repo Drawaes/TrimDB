@@ -87,6 +87,7 @@ namespace TrimDB.Core.Storage
                                     if (_sortedStrategy(sortedLayer))
                                     {
                                         mergeHappened = true;
+                                        TrimDbMetrics.Compactions.Add(1);
                                         await MergeSortedLayer(sortedLayer);
                                     }
                                     break;
@@ -95,6 +96,7 @@ namespace TrimDB.Core.Storage
                                     if (_unsortedStrategy(unsorted))
                                     {
                                         mergeHappened = true;
+                                        TrimDbMetrics.Compactions.Add(1);
                                         await MergeUnsortedLayer(unsorted);
                                     }
                                     break;

@@ -46,7 +46,7 @@ namespace TrimDB.Core.Storage
 
         private async Task CloseOffCurrentTable()
         {
-            var currentLocation = _metaData.BlockCount * FileConsts.PageSize;
+            var currentLocation = (long)_metaData.BlockCount * FileConsts.PageSize;
 
             var filterSize = _metaData.Filter.WriteToPipe(_filePipe);
             _metaData.AddTableEntry(currentLocation, filterSize, TableOfContentsEntryType.Filter);
@@ -58,6 +58,10 @@ namespace TrimDB.Core.Storage
 
             var blockOffsetsSize = _metaData.WriteBlockOffsets(_filePipe);
             _metaData.AddTableEntry(currentLocation, blockOffsetsSize, TableOfContentsEntryType.BlockOffsets);
+            currentLocation += blockOffsetsSize;
+
+            var crcSize = _metaData.WriteBlockCRCs(_filePipe);
+            _metaData.AddTableEntry(currentLocation, crcSize, TableOfContentsEntryType.BlockCRCs);
 
             _metaData.WriteTOC(_filePipe);
 
@@ -101,7 +105,7 @@ namespace TrimDB.Core.Storage
         {
             _blockItems.Clear();
 
-            var currentOffset = _metaData.BlockCount * FileConsts.PageSize;
+            var currentOffset = (long)_metaData.BlockCount * FileConsts.PageSize;
             _metaData.AddBlockOffset(currentOffset, merger.Current.Key.ToArray());
 
             // Phase 1: Collect items (async) — track space to know when block is full
@@ -150,6 +154,11 @@ namespace TrimDB.Core.Storage
             }
 
             builder.Finish();
+
+            var blockIndex = _metaData.BlockCount - 1;
+            var crc = Crc32Helper.Compute(blockSpan[..FileConsts.PageSize]);
+            _metaData.SetBlockCRC(blockIndex, crc);
+
             _filePipe.Advance(FileConsts.PageSize);
             _currentFileSize += FileConsts.PageSize;
         }

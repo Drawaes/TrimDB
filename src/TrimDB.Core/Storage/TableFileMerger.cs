@@ -1,61 +1,74 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using TrimDB.Core.InMemory;
 
 namespace TrimDB.Core.Storage
 {
-    public class TableFileMerger : IAsyncEnumerator<IMemoryItem>
+    public class TableFileMerger : IAsyncEnumerator<IMemoryItem>, IAsyncDisposable
     {
-        private IAsyncEnumerator<IMemoryItem>[] _memoryItems;
+        private IAsyncEnumerator<IMemoryItem>?[] _memoryItems;
         private IAsyncEnumerator<IMemoryItem>[] _initialList;
+        private int _activeCount;
         private bool _hasInitialMove;
         private IAsyncEnumerator<IMemoryItem> _currentIterator;
 
         public TableFileMerger(IAsyncEnumerator<IMemoryItem>[] memoryItems)
         {
             _initialList = memoryItems;
-            _memoryItems = memoryItems;
-            _currentIterator = _memoryItems[0];
+            _memoryItems = new IAsyncEnumerator<IMemoryItem>?[memoryItems.Length];
+            Array.Copy(memoryItems, _memoryItems, memoryItems.Length);
+            _activeCount = memoryItems.Length;
+            _currentIterator = _memoryItems[0]!;
         }
-                
+
         public IMemoryItem Current => _currentIterator.Current;
+
+        private void RemoveIterator(IAsyncEnumerator<IMemoryItem> exhausted)
+        {
+            for (var i = 0; i < _activeCount; i++)
+            {
+                if (_memoryItems[i] == exhausted)
+                {
+                    _activeCount--;
+                    _memoryItems[i] = _memoryItems[_activeCount];
+                    _memoryItems[_activeCount] = null;
+                    return;
+                }
+            }
+        }
 
         public async ValueTask<bool> MoveNextAsync()
         {
             if (!_hasInitialMove)
             {
                 _hasInitialMove = true;
-                foreach (var i in _memoryItems)
+                for (var i = 0; i < _activeCount; i++)
                 {
-                    await i.MoveNextAsync();
+                    await _memoryItems[i]!.MoveNextAsync();
                 }
             }
             else
             {
                 if (!await _currentIterator.MoveNextAsync())
-                    _memoryItems = _memoryItems.Where(mi => mi != _currentIterator).ToArray();
+                    RemoveIterator(_currentIterator);
             }
 
-            if (_memoryItems.Length == 0) return false;
+            if (_activeCount == 0) return false;
 
-            _currentIterator = _memoryItems[0];
-            var iteratorCopy = _memoryItems;
-            for (var i = 1; i < iteratorCopy.Length; i++)
+            _currentIterator = _memoryItems[0]!;
+            for (var i = 1; i < _activeCount; i++)
             {
-                var currentIterator = iteratorCopy[i];
+                var currentIterator = _memoryItems[i]!;
                 var compare = _currentIterator.Current.Key.SequenceCompareTo(currentIterator.Current.Key);
                 if (compare == 0)
                 {
                     if (!await currentIterator.MoveNextAsync())
                     {
-                        if (_memoryItems.Contains(currentIterator))
-                        {
-                            _memoryItems = _memoryItems.Where(mi => mi != currentIterator).ToArray();
-                        }
+                        RemoveIterator(currentIterator);
+                        i--; // re-visit the swapped-in element
                     }
                     continue;
                 }

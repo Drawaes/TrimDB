@@ -4,8 +4,11 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 
+#pragma warning disable CS0618 // Obsolete SkipList64 types reference each other
+
 namespace TrimDB.Core.InMemory.SkipList64
 {
+    [Obsolete("Use SkipList32 instead. Will be removed in a future release.")]
     public class SkipListEnumerator64 : IEnumerator<IMemoryItem>
     {
         private readonly SkipListAllocator64 _allocator;
@@ -42,6 +45,7 @@ namespace TrimDB.Core.InMemory.SkipList64
         }
     }
 
+    [Obsolete("Use SkipList32 instead. Will be removed in a future release.")]
     public struct SkipListItem64 : IMemoryItem
     {
         private readonly SkipListAllocator64 _allocator;

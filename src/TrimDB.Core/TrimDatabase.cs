@@ -1,7 +1,9 @@
-﻿using System;
+using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -42,7 +44,7 @@ namespace TrimDB.Core
 
             _databaseFolder = options.DatabaseFolder;
 
-            var unsorted = new UnsortedStorageLayer(1, _databaseFolder, _blockCache);
+            var unsorted = new UnsortedStorageLayer(1, _databaseFolder, _blockCache, _options.MaxL0Files);
 
             _storageLayers.Add(unsorted);
 
@@ -127,7 +129,7 @@ namespace TrimDB.Core
                 if (_walManager != null)
                     await ReplayWalAsync();
 
-                _ioScheduler = new IOScheduler(1, (UnsortedStorageLayer)_storageLayers[0], this);
+                _ioScheduler = new IOScheduler(_options.MaxMemtableFlushBacklog, (UnsortedStorageLayer)_storageLayers[0], this);
 
                 // Flush any memtables that filled during WAL replay
                 if (_replayPendingFlush != null)
@@ -188,6 +190,8 @@ namespace TrimDB.Core
         {
             if (Volatile.Read(ref _disposed) == 1) throw new ObjectDisposedException(nameof(TrimDatabase));
 
+            TrimDbMetrics.Gets.Add(1);
+
             var sl = Volatile.Read(ref _skipList);
             if (sl != null)
             {
@@ -195,10 +199,12 @@ namespace TrimDB.Core
 
                 if (result == SearchResult.Deleted)
                 {
+                    TrimDbMetrics.GetMemHits.Add(1);
                     return default;
                 }
                 else if (result == SearchResult.Found)
                 {
+                    TrimDbMetrics.GetMemHits.Add(1);
                     var memory = value.ToArray();
                     return new ValueTask<ReadOnlyMemory<byte>>(memory);
                 }
@@ -210,10 +216,12 @@ namespace TrimDB.Core
                 var result = oldsl.TryGet(key, out var value);
                 if (result == SearchResult.Deleted)
                 {
+                    TrimDbMetrics.GetMemHits.Add(1);
                     return new ValueTask<ReadOnlyMemory<byte>>(new ReadOnlyMemory<byte>());
                 }
                 else if (result == SearchResult.Found)
                 {
+                    TrimDbMetrics.GetMemHits.Add(1);
                     var memory = value.ToArray();
                     return new ValueTask<ReadOnlyMemory<byte>>(memory);
                 }
@@ -221,7 +229,7 @@ namespace TrimDB.Core
 
             var copiedMemory = MemoryPool<byte>.Shared.Rent(key.Length);
             key.CopyTo(copiedMemory.Memory.Span);
-            return GetAsyncInternal(copiedMemory.Memory.Slice(0, key.Length));
+            return GetAsyncInternalWithRental(copiedMemory, key.Length);
         }
 
         internal void RemoveMemoryTable(MemoryTable sl)
@@ -249,6 +257,18 @@ namespace TrimDB.Core
             await _manifest.WriteAsync(data);
         }
 
+        private async ValueTask<ReadOnlyMemory<byte>> GetAsyncInternalWithRental(IMemoryOwner<byte> rental, int keyLength)
+        {
+            try
+            {
+                return await GetAsyncInternal(rental.Memory.Slice(0, keyLength));
+            }
+            finally
+            {
+                rental.Dispose();
+            }
+        }
+
         public async ValueTask<ReadOnlyMemory<byte>> GetAsyncInternal(ReadOnlyMemory<byte> key)
         {
             var keyHash = _hasher.ComputeHash64(key.Span);
@@ -258,6 +278,7 @@ namespace TrimDB.Core
                 var result = await storage.GetAsync(key, keyHash).ConfigureAwait(false);
                 if (result.Result == SearchResult.Deleted || result.Result == SearchResult.Found)
                 {
+                    TrimDbMetrics.GetStorageHits.Add(1);
                     return result.Value;
                 }
             }
@@ -282,6 +303,8 @@ namespace TrimDB.Core
         public ValueTask<bool> DeleteAsync(ReadOnlySpan<byte> key)
         {
             if (Volatile.Read(ref _disposed) == 1) throw new ObjectDisposedException(nameof(TrimDatabase));
+
+            TrimDbMetrics.Deletes.Add(1);
 
             if (_walManager != null)
             {
@@ -323,24 +346,80 @@ namespace TrimDB.Core
         {
             if (Volatile.Read(ref _disposed) == 1) throw new ObjectDisposedException(nameof(TrimDatabase));
 
-            if (_walManager != null)
+            TrimDbMetrics.Puts.Add(1);
+            long startTimestamp = 0;
+            if (TrimDbMetrics.PutDuration.Enabled)
+                startTimestamp = Stopwatch.GetTimestamp();
+
+            try
             {
-                // Single-writer: WAL consumer handles memtable insert via callback
-                await _walManager.LogKV(MemoryMarshal.AsMemory(key), MemoryMarshal.AsMemory(value), false);
-                return;
+                if (_walManager != null)
+                {
+                    // Single-writer: WAL consumer handles memtable insert via callback
+                    await _walManager.LogKV(MemoryMarshal.AsMemory(key), MemoryMarshal.AsMemory(value), false);
+                    return;
+                }
+
+                // WAL disabled: direct memtable write (existing concurrent behavior)
+                while (true)
+                {
+                    var sl = Volatile.Read(ref _skipList);
+
+                    if (!sl.Put(key.Span, value.Span))
+                    {
+                        await SwitchInMemoryTable(sl);
+                        continue;
+                    }
+                    return;
+                }
+            }
+            finally
+            {
+                if (startTimestamp != 0)
+                    TrimDbMetrics.PutDuration.Record(Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds);
+            }
+        }
+
+        public async IAsyncEnumerable<ScanEntry> ScanAsync(
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            if (Volatile.Read(ref _disposed) == 1) throw new ObjectDisposedException(nameof(TrimDatabase));
+
+            TrimDbMetrics.Scans.Add(1);
+
+            var sources = new List<IAsyncEnumerator<IMemoryItem>>();
+
+            // Active memtable
+            var sl = Volatile.Read(ref _skipList);
+            if (sl != null)
+                sources.Add(new SyncToAsyncEnumerator<IMemoryItem>(sl.GetEnumerator()));
+
+            // Old memtables (newest first)
+            var oldLists = Volatile.Read(ref _oldInMemoryTables);
+            for (var i = oldLists.Count - 1; i >= 0; i--)
+                sources.Add(new SyncToAsyncEnumerator<IMemoryItem>(oldLists[i].GetEnumerator()));
+
+            // Storage layers
+            foreach (var layer in _storageLayers)
+            {
+                var tables = layer.GetTables();
+                if (layer is UnsortedStorageLayer)
+                    for (var i = tables.Length - 1; i >= 0; i--)
+                        sources.Add(tables[i].GetAsyncEnumerator(cancellationToken));
+                else
+                    foreach (var t in tables)
+                        sources.Add(t.GetAsyncEnumerator(cancellationToken));
             }
 
-            // WAL disabled: direct memtable write (existing concurrent behavior)
-            while (true)
-            {
-                var sl = Volatile.Read(ref _skipList);
+            if (sources.Count == 0) yield break;
 
-                if (!sl.Put(key.Span, value.Span))
-                {
-                    await SwitchInMemoryTable(sl);
-                    continue;
-                }
-                return;
+            await using var merger = new TableFileMerger(sources.ToArray());
+            while (await merger.MoveNextAsync().ConfigureAwait(false))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var item = merger.Current;
+                if (item.IsDeleted) continue;
+                yield return new ScanEntry(item.Key.ToArray(), item.Value.ToArray());
             }
         }
 
@@ -353,6 +432,8 @@ namespace TrimDB.Core
                 {
                     var list = new List<MemoryTable>(_oldInMemoryTables) { sl };
                     Interlocked.Exchange(ref _oldInMemoryTables, list);
+
+                    TrimDbMetrics.Flushes.Add(1);
 
                     // Use the pre-allocated memtable for an instant swap
                     var next = Interlocked.Exchange(ref _nextMemoryTable, null);
@@ -396,4 +477,3 @@ namespace TrimDB.Core
         }
     }
 }
-

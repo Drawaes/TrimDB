@@ -8,6 +8,7 @@ namespace TrimDB.Core.Storage.MetaData
     {
         BlockOffsets = 1,
         Statistics = 2,
-        Filter = 3
+        Filter = 3,
+        BlockCRCs = 4
     }
 }

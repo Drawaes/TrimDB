@@ -1,17 +1,14 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Drawing;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
-using TrimDB.Core.InMemory.SkipList32;
+
+#pragma warning disable CS0618 // Obsolete SkipList64 types reference each other
 
 namespace TrimDB.Core.InMemory.SkipList64
 {
+    [Obsolete("Use SkipList32 instead. Will be removed in a future release.")]
     public class ArrayBasedAllocator64 : SkipListAllocator64
     {
-        private readonly GCHandle _gcHandle;
         private long _maxSize;
         private byte[] _data;
         private long _initalOffset;
@@ -21,9 +18,15 @@ namespace TrimDB.Core.InMemory.SkipList64
             : base(maxHeight)
         {
             _maxSize = maxSize;
-            _data = new byte[maxSize + ALIGNMENTSIZE - 1];
-            _gcHandle = GCHandle.Alloc(_data, GCHandleType.Pinned);
-            _initalOffset = AlignLength(_gcHandle.AddrOfPinnedObject().ToInt64()) - _gcHandle.AddrOfPinnedObject().ToInt64();
+            _data = GC.AllocateArray<byte>((int)(maxSize + ALIGNMENTSIZE - 1), pinned: true);
+            unsafe
+            {
+                fixed (byte* ptr = _data)
+                {
+                    var addr = (long)ptr;
+                    _initalOffset = AlignLength(addr) - addr;
+                }
+            }
             if (_initalOffset == 0)
             {
                 _initalOffset += ALIGNMENTSIZE;
@@ -85,6 +88,6 @@ namespace TrimDB.Core.InMemory.SkipList64
             return currentSize;
         }
 
-        protected override void Dispose(bool isDisposing) => _gcHandle.Free();
+        protected override void Dispose(bool isDisposing) { }
     }
 }

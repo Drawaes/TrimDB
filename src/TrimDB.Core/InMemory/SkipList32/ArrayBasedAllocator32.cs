@@ -1,15 +1,11 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
 
 namespace TrimDB.Core.InMemory.SkipList32
 {
     public class ArrayBasedAllocator32 : IDisposable
     {
-        private readonly GCHandle _gcHandle;
         private byte[] _data;
         private int _initalOffset;
         private int _currentPointer;
@@ -27,9 +23,15 @@ namespace TrimDB.Core.InMemory.SkipList32
             _heightGenerator = new SkipList64.SkipListHeightGenerator64(maxHeight);
             _maxSize = maxSize;
 
-            _data = new byte[maxSize + ALIGNMENTSIZE - 1];
-            _gcHandle = GCHandle.Alloc(_data, GCHandleType.Pinned);
-            _initalOffset = (int)(AlignLength(_gcHandle.AddrOfPinnedObject().ToInt64()) - _gcHandle.AddrOfPinnedObject().ToInt64());
+            _data = GC.AllocateArray<byte>(maxSize + ALIGNMENTSIZE - 1, pinned: true);
+            unsafe
+            {
+                fixed (byte* ptr = _data)
+                {
+                    var addr = (long)ptr;
+                    _initalOffset = (int)(AlignLength(addr) - addr);
+                }
+            }
             if (_initalOffset == 0)
             {
                 _initalOffset += ALIGNMENTSIZE;
@@ -113,6 +115,6 @@ namespace TrimDB.Core.InMemory.SkipList32
             return currentSize;
         }
 
-        public void Dispose() => _gcHandle.Free();
+        public void Dispose() { }
     }
 }

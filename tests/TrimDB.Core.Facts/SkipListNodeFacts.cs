@@ -4,6 +4,8 @@ using System.Text;
 using TrimDB.Core.InMemory.SkipList64;
 using Xunit;
 
+#pragma warning disable CS0618 // Obsolete SkipList64 types used in tests
+
 namespace TrimDB.Core.Facts
 {
     public class SkipListNodeFacts
