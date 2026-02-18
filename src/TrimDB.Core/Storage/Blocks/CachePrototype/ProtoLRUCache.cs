@@ -37,8 +37,8 @@ namespace TrimDB.Core.Storage.Blocks.CachePrototype
         public async Task<IMemoryOwner<byte>> GetMemory(FileIdentifier fileId, int blockId)
         {
             var bid = new BlockIdentifier() { BlockId = (uint)blockId, FileId = (ushort)fileId.FileId, LevelId = (ushort)fileId.Level };
-            LinkedListNode<ProtoBlock> node;
-            ProtoBlock block = null;
+            LinkedListNode<ProtoBlock>? node;
+            ProtoBlock? block = null;
             var lookup = _lookup;
 
             lock (_lock)

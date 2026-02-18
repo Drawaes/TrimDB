@@ -59,6 +59,13 @@ namespace TrimDB.Core.InMemory.SkipList32
             return new Span<byte>(_data, valueLocation + sizeof(int), length);
         }
 
+        public ReadOnlyMemory<byte> GetValueMemory(int valueLocation)
+        {
+            ref var sizeOffset = ref _data[valueLocation];
+            var length = Unsafe.ReadUnaligned<int>(ref sizeOffset);
+            return new ReadOnlyMemory<byte>(_data, valueLocation + sizeof(int), length);
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int AlignLength(int length)
         {

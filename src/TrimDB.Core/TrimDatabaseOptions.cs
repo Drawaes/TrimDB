@@ -13,7 +13,7 @@ namespace TrimDB.Core
         public Func<MemoryTable> MemoryTable { get; set; } = () => new SkipList32(new ArrayBasedAllocator32(64 * 1024 * 1024, 25));
         public Func<BlockCache> BlockCache { get; set; } = () => new MMapBlockCache();
         public int Levels { get; set; } = 5;
-        public string DatabaseFolder { get; set; }
+        public string DatabaseFolder { get; set; } = null!;
 
         // public int[] FilesPerLevel { get; set; }
         public double LevelIncreaseFactor { get; set; } = 4;
@@ -31,5 +31,7 @@ namespace TrimDB.Core
 
         public int MaxL0Files { get; set; } = 6;
         public int MaxMemtableFlushBacklog { get; set; } = 2;
+
+        public int WalChannelCapacity { get; set; } = 4096;
     }
 }

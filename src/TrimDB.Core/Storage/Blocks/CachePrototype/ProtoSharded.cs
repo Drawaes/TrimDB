@@ -47,8 +47,8 @@ namespace TrimDB.Core.Storage.Blocks.CachePrototype
 
         private ProtoLRUCache GetCache(FileIdentifier id, int blockId)
         {
-            var bits = 0b0111_1111_1111_1111 & HashCode.Combine(id.GetHashCode(), blockId);
-            var index = System.Numerics.BitOperations.PopCount((uint)bits);
+            var hash = (uint)HashCode.Combine(id.GetHashCode(), blockId);
+            var index = (int)(hash & 0xF); // uniform across 16 shards
             return _lruCache[index];
         }
 

@@ -19,14 +19,14 @@ namespace TrimDB.Core
 {
     public class TrimDatabase : IAsyncDisposable
     {
-        private MemoryTable _skipList;
-        private MemoryTable _nextMemoryTable;
+        private MemoryTable? _skipList;
+        private MemoryTable? _nextMemoryTable;
         private List<MemoryTable> _oldInMemoryTables = new List<MemoryTable>();
         private readonly List<StorageLayer> _storageLayers = new List<StorageLayer>();
         private readonly IHashFunction _hasher = new MurmurHash3();
         private readonly SemaphoreSlim _skipListLock = new SemaphoreSlim(1);
         private readonly string _databaseFolder;
-        private IOScheduler _ioScheduler;
+        private IOScheduler? _ioScheduler;
         private readonly BlockCache _blockCache;
         private TrimDatabaseOptions _options;
         private KVLogManager? _walManager;
@@ -50,7 +50,7 @@ namespace TrimDB.Core
 
             for (var i = 2; i <= _options.Levels; i++)
             {
-                var filesAtLevel = (int)Math.Ceiling(_options.FirstLevelMaxFileCount * Math.Pow(_options.FirstLevelMaxFileCount, i - 2));
+                var filesAtLevel = (int)Math.Ceiling(_options.FirstLevelMaxFileCount * Math.Pow(_options.LevelIncreaseFactor, i - 2));
                 _storageLayers.Add(new SortedStorageLayer(i, _databaseFolder, _blockCache, _options.FileSize, filesAtLevel));
             }
             if (!_options.OpenReadOnly)
@@ -61,7 +61,7 @@ namespace TrimDB.Core
                 if (!_options.DisableWAL)
                 {
                     var walPath = System.IO.Path.Combine(_databaseFolder, "wal.wal");
-                    _walManager = new FileBasedKVLogManager(walPath, waitForFlush: _options.WalWaitForFlush);
+                    _walManager = new FileBasedKVLogManager(walPath, waitForFlush: _options.WalWaitForFlush, channelCapacity: _options.WalChannelCapacity);
                     _walManager.OnBatchFlushed = async (batch) =>
                     {
                         foreach (var (op, offset) in batch)
@@ -195,7 +195,7 @@ namespace TrimDB.Core
             var sl = Volatile.Read(ref _skipList);
             if (sl != null)
             {
-                var result = sl.TryGet(key, out var value);
+                var result = sl.TryGetMemory(key, out var value);
 
                 if (result == SearchResult.Deleted)
                 {
@@ -205,15 +205,14 @@ namespace TrimDB.Core
                 else if (result == SearchResult.Found)
                 {
                     TrimDbMetrics.GetMemHits.Add(1);
-                    var memory = value.ToArray();
-                    return new ValueTask<ReadOnlyMemory<byte>>(memory);
+                    return new ValueTask<ReadOnlyMemory<byte>>(value);
                 }
             }
 
             var oldLists = Volatile.Read(ref _oldInMemoryTables);
             foreach (var oldsl in oldLists)
             {
-                var result = oldsl.TryGet(key, out var value);
+                var result = oldsl.TryGetMemory(key, out var value);
                 if (result == SearchResult.Deleted)
                 {
                     TrimDbMetrics.GetMemHits.Add(1);
@@ -222,8 +221,7 @@ namespace TrimDB.Core
                 else if (result == SearchResult.Found)
                 {
                     TrimDbMetrics.GetMemHits.Add(1);
-                    var memory = value.ToArray();
-                    return new ValueTask<ReadOnlyMemory<byte>>(memory);
+                    return new ValueTask<ReadOnlyMemory<byte>>(value);
                 }
             }
 
@@ -327,7 +325,7 @@ namespace TrimDB.Core
             }
 
             // WAL disabled: existing direct path
-            var sl = Volatile.Read(ref _skipList);
+            var sl = Volatile.Read(ref _skipList)!;
             if (sl.Delete(key))
             {
                 return new ValueTask<bool>(true);
@@ -347,7 +345,7 @@ namespace TrimDB.Core
         {
             while (true)
             {
-                var sl = Volatile.Read(ref _skipList);
+                var sl = Volatile.Read(ref _skipList)!;
                 if (sl.Delete(key))
                 {
                     return true;
@@ -377,7 +375,7 @@ namespace TrimDB.Core
                 // WAL disabled: direct memtable write (existing concurrent behavior)
                 while (true)
                 {
-                    var sl = Volatile.Read(ref _skipList);
+                    var sl = Volatile.Read(ref _skipList)!;
 
                     if (!sl.Put(key.Span, value.Span))
                     {
@@ -513,7 +511,7 @@ namespace TrimDB.Core
                     var next = Interlocked.Exchange(ref _nextMemoryTable, null);
                     Interlocked.Exchange(ref _skipList, next ?? _options.MemoryTable());
 
-                    await _ioScheduler.ScheduleSave(sl);
+                    await _ioScheduler!.ScheduleSave(sl);
 
                     // Pre-allocate the next memtable in the background
                     _ = Task.Run(() => Volatile.Write(ref _nextMemoryTable, _options.MemoryTable()));
@@ -537,9 +535,9 @@ namespace TrimDB.Core
             await _skipListLock.WaitAsync();
             try
             {
-                MemoryTable old = null;
+                MemoryTable? old = null;
                 old = Interlocked.Exchange(ref _skipList, old);
-                await _ioScheduler.ScheduleSave(old);
+                await _ioScheduler.ScheduleSave(old!);
             }
             finally
             {

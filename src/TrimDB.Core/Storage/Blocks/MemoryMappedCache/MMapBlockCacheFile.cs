@@ -38,7 +38,17 @@ namespace TrimDB.Core.Storage.Blocks.MemoryMappedCache
         {
             if (blockId >= _blockCount) throw new ArgumentOutOfRangeException($"You requested a block of {blockId} but the block count is only {_blockCount}");
 
+            if (Volatile.Read(ref _disposed) == 1) throw new ObjectDisposedException(nameof(MMapBlockCacheFile));
+
             Interlocked.Increment(ref _numberOfRefs);
+
+            // Double-check after incrementing refs to close TOCTOU race
+            if (Volatile.Read(ref _disposed) == 1)
+            {
+                Interlocked.Decrement(ref _numberOfRefs);
+                throw new ObjectDisposedException(nameof(MMapBlockCacheFile));
+            }
+
             var mem = new MMapBlockCacheMemory(_parentCache, _fileId, blockId, _ptr);
             return new ValueTask<IMemoryOwner<byte>>(mem);
         }
@@ -51,6 +61,14 @@ namespace TrimDB.Core.Storage.Blocks.MemoryMappedCache
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+
+            // Drain: wait for all outstanding readers to release their refs
+            var spin = new SpinWait();
+            while (Volatile.Read(ref _numberOfRefs) > 0)
+            {
+                spin.SpinOnce();
+            }
+
             _mappedView.SafeMemoryMappedViewHandle.ReleasePointer();
             _mappedView.Dispose();
             _mappedFile.Dispose();

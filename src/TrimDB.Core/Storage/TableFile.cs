@@ -36,20 +36,20 @@ namespace TrimDB.Core.Storage
             FileId = new FileIdentifier(level, index);
         }
 
-        public ReadOnlyMemory<byte> FirstKey => _metaData.FirstKey;
-        public ReadOnlyMemory<byte> LastKey => _metaData.LastKey;
-        public int BlockCount => _metaData.BlockCount;
+        public ReadOnlyMemory<byte> FirstKey => _metaData!.FirstKey;
+        public ReadOnlyMemory<byte> LastKey => _metaData!.LastKey;
+        public int BlockCount => _metaData!.BlockCount;
         public string FileName => _fileName;
         public FileIdentifier FileId { get; }
 
         public ValueTask<SearchResultValue> GetAsync(ReadOnlyMemory<byte> key, ulong hash)
         {
-            if (!_metaData.Filter.MayContainKey((long)hash))
+            if (!_metaData!.Filter.MayContainKey((long)hash))
             {
                 return SearchResultValue.CreateValueTask(SearchResult.NotFound);
             }
 
-            var compare = key.Span.SequenceCompareTo(_metaData.FirstKey.Span);
+            var compare = key.Span.SequenceCompareTo(_metaData!.FirstKey.Span);
             if (compare < 0)
             {
                 // Search is before the files range
@@ -67,7 +67,7 @@ namespace TrimDB.Core.Storage
                 }
             }
 
-            compare = key.Span.SequenceCompareTo(_metaData.LastKey.Span);
+            compare = key.Span.SequenceCompareTo(_metaData!.LastKey.Span);
             if (compare > 0)
             {
                 // Search is after the files range
@@ -78,7 +78,7 @@ namespace TrimDB.Core.Storage
                 return GetLastValue();
                 async ValueTask<SearchResultValue> GetLastValue()
                 {
-                    using var firstBlock = await GetKVBlock(_metaData.BlockCount - 1);
+                    using var firstBlock = await GetKVBlock(_metaData!.BlockCount - 1);
                     firstBlock.GetLastKey();
                     return new SearchResultValue() { Result = SearchResult.Found, Value = firstBlock.GetCurrentValue() };
                 }
@@ -93,7 +93,7 @@ namespace TrimDB.Core.Storage
             //var _testValue = new byte[] { 174, 109, 236, 27, 0, 0, 7, 0, 0, 0 };
             //if (_testValue.AsSpan().SequenceCompareTo(key.Span) == 0) Debugger.Break();
 
-            var containingBlock = _metaData.FindContainingBlock(key);
+            var containingBlock = _metaData!.FindContainingBlock(key);
             if(containingBlock == -1) return new SearchResultValue() { Result = SearchResult.NotFound };
 
             using var block = await GetKVBlock(containingBlock);

@@ -27,6 +27,20 @@ namespace TrimDB.Core.InMemory
         public abstract bool Delete(ReadOnlySpan<byte> key);
         public abstract SearchResult TryGet(ReadOnlySpan<byte> key, out ReadOnlySpan<byte> value);
 
+        public virtual SearchResult TryGetMemory(ReadOnlySpan<byte> key, out ReadOnlyMemory<byte> value)
+        {
+            var result = TryGet(key, out var span);
+            if (result == SearchResult.Found)
+            {
+                value = span.ToArray();
+            }
+            else
+            {
+                value = default;
+            }
+            return result;
+        }
+
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

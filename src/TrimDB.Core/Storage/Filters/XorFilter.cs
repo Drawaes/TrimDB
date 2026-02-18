@@ -22,9 +22,9 @@ namespace TrimDB.Core.Storage.Filters
         private int _arrayLength;
         private int _blockLength;
         private long _seed;
-        private ushort[] _fingerPrints;
+        private ushort[] _fingerPrints = null!;
         private bool _is8Bit; // true when loaded from legacy 8-bit format
-        private readonly List<long> _keys;
+        private readonly HashSet<long> _keys;
         private readonly MurmurHash3 _hash = new MurmurHash3();
         private readonly bool _useMurMur;
 
@@ -33,11 +33,11 @@ namespace TrimDB.Core.Storage.Filters
             _useMurMur = useMurMur;
             if (approxSize < 1)
             {
-                _keys = new List<long>();
+                _keys = new HashSet<long>();
             }
             else
             {
-                _keys = new List<long>(approxSize);
+                _keys = new HashSet<long>(approxSize);
             }
         }
 
@@ -175,7 +175,7 @@ namespace TrimDB.Core.Storage.Filters
                 hash = Farmhash.Sharp.Farmhash.Hash64(key);
             }
             _keys.Add((long)hash);
-            return true;
+            return true; // HashSet.Add deduplicates at insertion time
         }
 
         public override bool MayContainKey(long key)
@@ -195,7 +195,7 @@ namespace TrimDB.Core.Storage.Filters
 
         public override int WriteToPipe(PipeWriter pipeWriter)
         {
-            var uniq = _keys.Distinct().ToArray();
+            var uniq = _keys.ToArray();
 
             LoadFromKeys(uniq);
             var fingerprintBytes = _fingerPrints.Length * sizeof(ushort);

@@ -15,9 +15,9 @@ namespace TrimDB.Core.Storage
         private readonly BlockCache _blockCache;
         private readonly List<TableFile> _newTableFiles = new List<TableFile>();
 
-        private string _fileName;
-        private Stream _fileStream;
-        private PipeWriter _filePipe;
+        private string _fileName = null!;
+        private Stream _fileStream = null!;
+        private PipeWriter _filePipe = null!;
         private long _currentFileSize = 0;
         private TableMetaData _metaData = new TableMetaData(0, true);
         private int _lastTableKeyCount = 0;

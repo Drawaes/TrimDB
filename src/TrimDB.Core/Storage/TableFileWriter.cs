@@ -12,7 +12,7 @@ namespace TrimDB.Core.Storage
     {
         private readonly string _fileName;
 
-        private TableMetaData _metaData;
+        private TableMetaData _metaData = null!;
 
         public TableFileWriter(string fileName)
         {

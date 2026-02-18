@@ -12,8 +12,6 @@ namespace TrimDB.Core.Storage.Blocks.CachePrototype
     {
         private IncrementingEventCounter _cacheHits;
         private IncrementingEventCounter _cacheMisses;
-        private int _cacheHitsCount;
-        private int _cacheMissCount;
         public static readonly ProtoEventSource Log = new ProtoEventSource();
 
         public ProtoEventSource()

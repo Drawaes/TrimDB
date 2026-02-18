@@ -13,7 +13,7 @@ namespace TrimDB.Core.Storage
     {
         private readonly TableFile _tableFile;
         private int _blockNumber = -1;
-        private BlockReader _blockReader;
+        private BlockReader _blockReader = null!;
         private readonly ReusableMemoryItem _memItem = new ReusableMemoryItem();
 
         public TableFileEnumerator(TableFile tableFile)
@@ -65,7 +65,7 @@ namespace TrimDB.Core.Storage
 
         internal class ReusableMemoryItem : IMemoryItem
         {
-            public BlockReader CurrentBlock { get; set; }
+            public BlockReader CurrentBlock { get; set; } = null!;
 
             public ReadOnlySpan<byte> Key => CurrentBlock.GetCurrentKey();
 

@@ -190,6 +190,20 @@ namespace TrimDB.Core.InMemory.SkipList32
             return result;
         }
 
+        public override SearchResult TryGetMemory(ReadOnlySpan<byte> key, out ReadOnlyMemory<byte> value)
+        {
+            var result = Search(key, out var nextNode);
+            if (result == SearchResult.Found)
+            {
+                value = _allocator.GetValueMemory(nextNode.ValueLocation);
+            }
+            else
+            {
+                value = default;
+            }
+            return result;
+        }
+
         private SearchResult Search(ReadOnlySpan<byte> key, out SkipListNode32 node)
         {
             var currentNode = _allocator.HeadNode;

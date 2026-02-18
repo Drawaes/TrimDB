@@ -12,11 +12,9 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
     {
         private TaskCompletionSource<bool> _taskSource = new TaskCompletionSource<bool>();
         private int _refCount;
-        private FileIdentifier _fileId;
-        private int _blockId;
         private AsyncBlockCacheFile _cacheFile;
 
-        public IMemoryOwner<byte> BlockMemory { get; set; }
+        public IMemoryOwner<byte> BlockMemory { get; set; } = null!;
         public Task<bool> Task => _taskSource.Task;
 
         public AsyncBlockManager(AsyncBlockCacheFile cacheFile) => _cacheFile = cacheFile;

@@ -28,7 +28,7 @@ namespace TrimDB.Core.Storage
         private readonly Func<StorageLayer, bool> _unsortedStrategy;
         private readonly SemaphoreSlim _compactionSignal = new SemaphoreSlim(0);
 
-        public IOScheduler(int maxSkiplistBacklog, UnsortedStorageLayer storageLayer, TrimDatabase database, ILogger logger = null)
+        public IOScheduler(int maxSkiplistBacklog, UnsortedStorageLayer storageLayer, TrimDatabase database, ILogger? logger = null)
         {
             _storageLayer = storageLayer;
             _database = database;

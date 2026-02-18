@@ -72,7 +72,7 @@ namespace TrimDB.Core.KVLog
         private readonly string _fileName;
         private readonly string? _metadataFileName;
 
-        public FileBasedKVLogManager(string fileName, string? metadataFileName = null, bool waitForFlush = true)
+        public FileBasedKVLogManager(string fileName, string? metadataFileName = null, bool waitForFlush = true, int channelCapacity = 4096)
         {
             _metadataFileName = metadataFileName;
             _fileName = fileName;
@@ -86,7 +86,11 @@ namespace TrimDB.Core.KVLog
             _kvLogStream.Seek(0, SeekOrigin.End);
             _kvLogWriter = PipeWriter.Create(_kvLogStream);
 
-            _channel = Channel.CreateUnbounded<PutOperation>();
+            _channel = Channel.CreateBounded<PutOperation>(new BoundedChannelOptions(channelCapacity)
+            {
+                FullMode = BoundedChannelFullMode.Wait,
+                SingleReader = true,
+            });
             _consumerTask = Task.Run(() => ConsumeOperationsFromChannel());
         }
 
@@ -259,7 +263,7 @@ namespace TrimDB.Core.KVLog
             var intBuffer = new byte[sizeof(int)];
 
             // Skip past key
-            await fs.ReadAsync(intBuffer.AsMemory());
+            await fs.ReadExactlyAsync(intBuffer.AsMemory());
             var keyLen = BinaryPrimitives.ReadInt32LittleEndian(intBuffer);
             fs.Seek(keyLen, SeekOrigin.Current);
 
@@ -267,12 +271,12 @@ namespace TrimDB.Core.KVLog
             fs.Seek(1, SeekOrigin.Current);
 
             // Read value
-            await fs.ReadAsync(intBuffer.AsMemory());
+            await fs.ReadExactlyAsync(intBuffer.AsMemory());
             var valSize = BinaryPrimitives.ReadInt32LittleEndian(intBuffer);
             var valBuffer = new byte[valSize];
             if (valSize > 0)
             {
-                await fs.ReadAsync(valBuffer.AsMemory());
+                await fs.ReadExactlyAsync(valBuffer.AsMemory());
             }
             return new Memory<byte>(valBuffer, 0, valSize);
         }
@@ -332,7 +336,7 @@ namespace TrimDB.Core.KVLog
                 if (metaFs.Length >= sizeof(long))
                 {
                     var offsetBuffer = new byte[sizeof(long)];
-                    await metaFs.ReadAsync(offsetBuffer.AsMemory());
+                    await metaFs.ReadExactlyAsync(offsetBuffer.AsMemory());
                     lastCommitted = BinaryPrimitives.ReadInt64LittleEndian(offsetBuffer);
                 }
             }
@@ -369,34 +373,33 @@ namespace TrimDB.Core.KVLog
 
                 if (keySize <= 0) break; // corrupt or unknown
 
-                var putOperation = new PutOperation();
-
                 // Read key
                 var keyBuffer = new byte[keySize];
-                await fs.ReadAsync(keyBuffer.AsMemory());
+                await fs.ReadExactlyAsync(keyBuffer.AsMemory());
 
-                // Read deleted flag
-                var deletedByte = new byte[1];
-                await fs.ReadAsync(deletedByte.AsMemory());
-                var isDeleted = deletedByte[0] != 0;
+                // Read deleted flag — single byte, no allocation
+                var deletedRaw = fs.ReadByte();
+                if (deletedRaw < 0) break;
+                var isDeleted = deletedRaw != 0;
 
                 // Read value length + value
-                await fs.ReadAsync(intBuffer.AsMemory());
+                await fs.ReadExactlyAsync(intBuffer.AsMemory());
                 var valSize = BinaryPrimitives.ReadInt32LittleEndian(intBuffer);
                 var valBuffer = new byte[valSize];
                 if (valSize > 0)
                 {
-                    await fs.ReadAsync(valBuffer.AsMemory());
+                    await fs.ReadExactlyAsync(valBuffer.AsMemory());
                 }
 
                 // Advance position: keyLen(4) + key(N) + deleted(1) + valLen(4) + val(N)
                 currentPos += sizeof(int) + keySize + 1 + sizeof(int) + valSize;
 
-                putOperation.Key = keyBuffer;
-                putOperation.Value = valBuffer;
-                putOperation.Deleted = isDeleted;
-
-                yield return putOperation;
+                yield return new PutOperation
+                {
+                    Key = keyBuffer,
+                    Value = valBuffer,
+                    Deleted = isDeleted,
+                };
             }
         }
 

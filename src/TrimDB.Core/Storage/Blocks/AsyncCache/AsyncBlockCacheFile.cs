@@ -90,8 +90,9 @@ namespace TrimDB.Core.Storage.Blocks.AsyncCache
                 overlapped.hEvent = IntPtr.Zero;
                 overlapped.Internal = IntPtr.Zero;
                 overlapped.InternalHigh = IntPtr.Zero;
-                overlapped.Offset = (uint)blockId * FileConsts.PageSize;
-                overlapped.OffsetHigh = 0;
+                long fileOffset = (long)blockId * FileConsts.PageSize;
+                overlapped.Offset = (uint)(fileOffset & 0xFFFF_FFFF);
+                overlapped.OffsetHigh = (uint)(fileOffset >> 32);
                 overlapped.Pointer = IntPtr.Zero;
                 overlapped.FileId = _id.FileId;
                 overlapped.BlockId = blockId;
