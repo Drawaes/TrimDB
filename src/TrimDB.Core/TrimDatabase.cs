@@ -229,6 +229,8 @@ namespace TrimDB.Core
 
             var copiedMemory = MemoryPool<byte>.Shared.Rent(key.Length);
             key.CopyTo(copiedMemory.Memory.Span);
+            if (TrimDbMetrics.GetDuration.Enabled)
+                return TimedGetAsync(copiedMemory, key.Length, Stopwatch.GetTimestamp());
             return GetAsyncInternalWithRental(copiedMemory, key.Length);
         }
 
@@ -266,6 +268,18 @@ namespace TrimDB.Core
             finally
             {
                 rental.Dispose();
+            }
+        }
+
+        private async ValueTask<ReadOnlyMemory<byte>> TimedGetAsync(IMemoryOwner<byte> rental, int keyLength, long startTimestamp)
+        {
+            try
+            {
+                return await GetAsyncInternalWithRental(rental, keyLength);
+            }
+            finally
+            {
+                TrimDbMetrics.GetDuration.Record(Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds);
             }
         }
 
@@ -387,6 +401,60 @@ namespace TrimDB.Core
 
             TrimDbMetrics.Scans.Add(1);
 
+            var sources = CollectScanSources(default, default, cancellationToken);
+            if (sources.Count == 0) yield break;
+
+            await using var merger = new TableFileMerger(sources.ToArray());
+            while (await merger.MoveNextAsync().ConfigureAwait(false))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var item = merger.Current;
+                if (item.IsDeleted) continue;
+                yield return new ScanEntry(item.Key.ToArray(), item.Value.ToArray());
+            }
+        }
+
+        public IAsyncEnumerable<ScanEntry> ScanAsync(
+            ReadOnlyMemory<byte> startKey,
+            CancellationToken cancellationToken = default)
+        {
+            return ScanAsync(startKey, default, cancellationToken);
+        }
+
+        public async IAsyncEnumerable<ScanEntry> ScanAsync(
+            ReadOnlyMemory<byte> startKey,
+            ReadOnlyMemory<byte> endKey,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            if (Volatile.Read(ref _disposed) == 1) throw new ObjectDisposedException(nameof(TrimDatabase));
+
+            TrimDbMetrics.Scans.Add(1);
+
+            var sources = CollectScanSources(startKey, endKey, cancellationToken);
+            if (sources.Count == 0) yield break;
+
+            bool hasStart = startKey.Length > 0;
+            bool hasEnd = endKey.Length > 0;
+
+            await using var merger = new TableFileMerger(sources.ToArray());
+            while (await merger.MoveNextAsync().ConfigureAwait(false))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var item = merger.Current;
+                if (item.IsDeleted) continue;
+
+                if (hasStart && item.Key.SequenceCompareTo(startKey.Span) < 0) continue;
+                if (hasEnd && item.Key.SequenceCompareTo(endKey.Span) > 0) yield break;
+
+                yield return new ScanEntry(item.Key.ToArray(), item.Value.ToArray());
+            }
+        }
+
+        private List<IAsyncEnumerator<IMemoryItem>> CollectScanSources(
+            ReadOnlyMemory<byte> startKey,
+            ReadOnlyMemory<byte> endKey,
+            CancellationToken cancellationToken)
+        {
             var sources = new List<IAsyncEnumerator<IMemoryItem>>();
 
             // Active memtable
@@ -399,28 +467,34 @@ namespace TrimDB.Core
             for (var i = oldLists.Count - 1; i >= 0; i--)
                 sources.Add(new SyncToAsyncEnumerator<IMemoryItem>(oldLists[i].GetEnumerator()));
 
-            // Storage layers
+            // Storage layers (skip files entirely outside [startKey, endKey])
+            bool hasStart = startKey.Length > 0;
+            bool hasEnd = endKey.Length > 0;
+
             foreach (var layer in _storageLayers)
             {
                 var tables = layer.GetTables();
                 if (layer is UnsortedStorageLayer)
+                {
                     for (var i = tables.Length - 1; i >= 0; i--)
+                    {
+                        if (hasStart && tables[i].LastKey.Span.SequenceCompareTo(startKey.Span) < 0) continue;
+                        if (hasEnd && tables[i].FirstKey.Span.SequenceCompareTo(endKey.Span) > 0) continue;
                         sources.Add(tables[i].GetAsyncEnumerator(cancellationToken));
+                    }
+                }
                 else
+                {
                     foreach (var t in tables)
+                    {
+                        if (hasStart && t.LastKey.Span.SequenceCompareTo(startKey.Span) < 0) continue;
+                        if (hasEnd && t.FirstKey.Span.SequenceCompareTo(endKey.Span) > 0) continue;
                         sources.Add(t.GetAsyncEnumerator(cancellationToken));
+                    }
+                }
             }
 
-            if (sources.Count == 0) yield break;
-
-            await using var merger = new TableFileMerger(sources.ToArray());
-            while (await merger.MoveNextAsync().ConfigureAwait(false))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var item = merger.Current;
-                if (item.IsDeleted) continue;
-                yield return new ScanEntry(item.Key.ToArray(), item.Value.ToArray());
-            }
+            return sources;
         }
 
         private async Task SwitchInMemoryTable(MemoryTable sl)
