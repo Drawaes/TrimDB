@@ -62,6 +62,7 @@ namespace TrimDB.Core.Storage.Layers
         public TableFile[] GetTables() => _tableFiles;
 
         public abstract ValueTask<SearchResultValue> GetAsync(ReadOnlyMemory<byte> key, ulong hash);
+        public abstract ValueTask<ValueLease> GetWithLeaseAsync(ReadOnlyMemory<byte> key, ulong hash);
 
         internal int[] GetFileIndices()
         {

@@ -28,6 +28,16 @@ namespace TrimDB.Core.Storage.Layers
             return await tfs[index].GetAsync(key, hash);
         }
 
+        public override async ValueTask<ValueLease> GetWithLeaseAsync(ReadOnlyMemory<byte> key, ulong hash)
+        {
+            var tfs = _tableFiles;
+            var index = FindCandidateFile(tfs, key.Span);
+            if (index < 0)
+                return ValueLease.Empty;
+
+            return await tfs[index].GetWithLeaseAsync(key, hash);
+        }
+
         private static int FindCandidateFile(TableFile[] files, ReadOnlySpan<byte> key)
         {
             int lo = 0, hi = files.Length - 1;

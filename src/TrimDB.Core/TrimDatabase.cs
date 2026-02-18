@@ -312,6 +312,9 @@ namespace TrimDB.Core
             return SearchResult.NotFound;
         }
 
+        public ValueTask<bool> DeleteAsync(ReadOnlySpan<byte> key, WriteFlags flags)
+            => DeleteAsync(key); // flags ignored for MVP
+
         public ValueTask<bool> DeleteAsync(ReadOnlySpan<byte> key)
         {
             if (Volatile.Read(ref _disposed) == 1) throw new ObjectDisposedException(nameof(TrimDatabase));
@@ -353,6 +356,9 @@ namespace TrimDB.Core
                 await SwitchInMemoryTable(sl);
             }
         }
+
+        public Task PutAsync(ReadOnlyMemory<byte> key, ReadOnlyMemory<byte> value, WriteFlags flags)
+            => PutAsync(key, value); // flags ignored for MVP
 
         public async Task PutAsync(ReadOnlyMemory<byte> key, ReadOnlyMemory<byte> value)
         {
@@ -521,6 +527,130 @@ namespace TrimDB.Core
             {
                 _skipListLock.Release();
             }
+        }
+
+        public async Task ApplyBatchAsync(WriteBatch batch)
+        {
+            if (_walManager != null)
+            {
+                await _walManager.LogBatchBegin();
+                foreach (var (key, value, deleted) in batch.Operations)
+                {
+                    await _walManager.LogKV(key, value, deleted);
+                }
+                await _walManager.LogBatchCommit();
+                return;
+            }
+
+            // WAL disabled: direct memtable writes
+            foreach (var (key, value, deleted) in batch.Operations)
+            {
+                while (true)
+                {
+                    var sl = Volatile.Read(ref _skipList)!;
+                    bool ok = deleted ? sl.Delete(key.Span) : sl.Put(key.Span, value.Span);
+                    if (ok) break;
+                    await SwitchInMemoryTable(sl);
+                }
+            }
+        }
+
+        public ValueTask<ValueLease> GetWithLeaseAsync(ReadOnlySpan<byte> key)
+        {
+            if (Volatile.Read(ref _disposed) == 1) throw new ObjectDisposedException(nameof(TrimDatabase));
+
+            var sl = Volatile.Read(ref _skipList);
+            if (sl != null)
+            {
+                var result = sl.TryGetMemory(key, out var value);
+                if (result == SearchResult.Deleted)
+                    return new ValueTask<ValueLease>(ValueLease.Deleted);
+                else if (result == SearchResult.Found)
+                    return new ValueTask<ValueLease>(new ValueLease(value, null));
+            }
+
+            var oldLists = Volatile.Read(ref _oldInMemoryTables);
+            foreach (var oldsl in oldLists)
+            {
+                var result = oldsl.TryGetMemory(key, out var value);
+                if (result == SearchResult.Deleted)
+                    return new ValueTask<ValueLease>(ValueLease.Deleted);
+                else if (result == SearchResult.Found)
+                    return new ValueTask<ValueLease>(new ValueLease(value, null));
+            }
+
+            var copiedMemory = System.Buffers.MemoryPool<byte>.Shared.Rent(key.Length);
+            key.CopyTo(copiedMemory.Memory.Span);
+            return GetWithLeaseAsyncInternal(copiedMemory, key.Length);
+        }
+
+        private async ValueTask<ValueLease> GetWithLeaseAsyncInternal(System.Buffers.IMemoryOwner<byte> rental, int keyLength)
+        {
+            try
+            {
+                var key = rental.Memory.Slice(0, keyLength);
+                var keyHash = _hasher.ComputeHash64(key.Span);
+
+                foreach (var storage in _storageLayers)
+                {
+                    var lease = await storage.GetWithLeaseAsync(key, keyHash).ConfigureAwait(false);
+                    if (lease.IsFound || lease.IsDeleted)
+                        return lease;
+                }
+                return ValueLease.Empty;
+            }
+            finally
+            {
+                rental.Dispose();
+            }
+        }
+
+        public async Task FlushAsync()
+        {
+            if (_ioScheduler == null) return;
+            await _skipListLock.WaitAsync();
+            try
+            {
+                var sl = Volatile.Read(ref _skipList);
+                if (sl != null)
+                    await SwitchInMemoryTable(sl);
+            }
+            finally
+            {
+                _skipListLock.Release();
+            }
+            await _ioScheduler.FlushBarrierAsync();
+        }
+
+        public Task CompactAsync() => _ioScheduler?.ForceCompactAsync() ?? Task.CompletedTask;
+
+        public TrimDbStats GetStats()
+        {
+            long diskBytes = 0;
+            int sstableCount = 0;
+
+            foreach (var layer in _storageLayers)
+            {
+                var tables = layer.GetTables();
+                sstableCount += tables.Length;
+                foreach (var tf in tables)
+                {
+                    try
+                    {
+                        var fi = new System.IO.FileInfo(tf.FileName);
+                        if (fi.Exists)
+                            diskBytes += fi.Length;
+                    }
+                    catch { }
+                }
+            }
+
+            return new TrimDbStats
+            {
+                DiskBytes = diskBytes,
+                SstableCount = sstableCount,
+                LevelCount = _storageLayers.Count,
+            };
         }
 
         public async ValueTask DisposeAsync()

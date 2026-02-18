@@ -90,9 +90,6 @@ namespace TrimDB.Core.Storage
 
         private async ValueTask<SearchResultValue> BinarySearchBlocks(ReadOnlyMemory<byte> key)
         {
-            //var _testValue = new byte[] { 174, 109, 236, 27, 0, 0, 7, 0, 0, 0 };
-            //if (_testValue.AsSpan().SequenceCompareTo(key.Span) == 0) Debugger.Break();
-
             var containingBlock = _metaData!.FindContainingBlock(key);
             if(containingBlock == -1) return new SearchResultValue() { Result = SearchResult.NotFound };
 
@@ -107,6 +104,79 @@ namespace TrimDB.Core.Storage
                 return new SearchResultValue() { Result = SearchResult.Found, Value = block.GetCurrentValue().ToArray() };
             }
             return new SearchResultValue() { Result = SearchResult.NotFound };
+        }
+
+        public ValueTask<ValueLease> GetWithLeaseAsync(ReadOnlyMemory<byte> key, ulong hash)
+        {
+            if (!_metaData!.Filter.MayContainKey((long)hash))
+            {
+                return new ValueTask<ValueLease>(ValueLease.Empty);
+            }
+
+            var compare = key.Span.SequenceCompareTo(_metaData!.FirstKey.Span);
+            if (compare < 0)
+            {
+                return new ValueTask<ValueLease>(ValueLease.Empty);
+            }
+            else if (compare == 0)
+            {
+                return GetFirstValueWithLease();
+
+                async ValueTask<ValueLease> GetFirstValueWithLease()
+                {
+                    var firstBlock = await GetKVBlock(0);
+                    firstBlock.TryGetNextKey(out _);
+                    if (firstBlock.IsDeleted)
+                    {
+                        firstBlock.Dispose();
+                        return ValueLease.Deleted;
+                    }
+                    return new ValueLease(firstBlock.GetCurrentValue(), firstBlock);
+                }
+            }
+
+            compare = key.Span.SequenceCompareTo(_metaData!.LastKey.Span);
+            if (compare > 0)
+            {
+                return new ValueTask<ValueLease>(ValueLease.Empty);
+            }
+            else if (compare == 0)
+            {
+                return GetLastValueWithLease();
+                async ValueTask<ValueLease> GetLastValueWithLease()
+                {
+                    var lastBlock = await GetKVBlock(_metaData!.BlockCount - 1);
+                    lastBlock.GetLastKey();
+                    if (lastBlock.IsDeleted)
+                    {
+                        lastBlock.Dispose();
+                        return ValueLease.Deleted;
+                    }
+                    return new ValueLease(lastBlock.GetCurrentValue(), lastBlock);
+                }
+            }
+
+            return BinarySearchBlocksWithLease(key);
+        }
+
+        private async ValueTask<ValueLease> BinarySearchBlocksWithLease(ReadOnlyMemory<byte> key)
+        {
+            var containingBlock = _metaData!.FindContainingBlock(key);
+            if (containingBlock == -1) return ValueLease.Empty;
+
+            var block = await GetKVBlock(containingBlock);
+            var result = block.TryFindKey(key.Span);
+            if (result == BlockReader.KeySearchResult.Found)
+            {
+                if (block.IsDeleted)
+                {
+                    block.Dispose();
+                    return ValueLease.Deleted;
+                }
+                return new ValueLease(block.GetCurrentValue(), block);
+            }
+            block.Dispose();
+            return ValueLease.Empty;
         }
 
         public IEnumerator<TableItem> GetEnumerator() => new TableItemEnumerator(this);

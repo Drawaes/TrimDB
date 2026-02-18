@@ -18,6 +18,8 @@ namespace TrimDB.Core.KVLog
         public Memory<byte> Value;
         public bool Deleted;
         public bool IsCommitMarker;
+        public bool IsBatchBegin;
+        public bool IsBatchCommit;
         public long CommittedUpToOffset;
         public TaskCompletionSource<long> LoggingCompleted;
     }
@@ -32,6 +34,8 @@ namespace TrimDB.Core.KVLog
         public abstract Task<long> LogKV(Memory<byte> key, Memory<byte> value, bool isDeleted);
         public abstract Task RecordCommitted(long offset);
         public abstract Task<Memory<byte>> ReadValueAtLocation(long offset);
+        public abstract Task LogBatchBegin();
+        public abstract Task LogBatchCommit();
         public abstract IAsyncEnumerable<PutOperation> GetUncommittedOperations();
         public abstract ValueTask DisposeAsync();
     }
@@ -50,6 +54,9 @@ namespace TrimDB.Core.KVLog
     {
         private const int CommitMarkerSentinel = -2;
         private const int CommitMarkerSize = sizeof(int) + sizeof(long); // 12 bytes
+        private const int BatchBeginSentinel = -3;  // 4 bytes, no payload
+        private const int BatchCommitSentinel = -4; // 4 bytes, no payload
+        private const int BatchSentinelSize = sizeof(int);
 
         private readonly bool _waitForFlush;
         private readonly Channel<PutOperation> _channel;
@@ -133,7 +140,17 @@ namespace TrimDB.Core.KVLog
                         var entryStart = _offset;
                         try
                         {
-                            if (op.IsCommitMarker)
+                            if (op.IsBatchBegin)
+                            {
+                                WriteBatchBeginMarker();
+                                _offset += BatchSentinelSize;
+                            }
+                            else if (op.IsBatchCommit)
+                            {
+                                WriteBatchCommitMarker();
+                                _offset += BatchSentinelSize;
+                            }
+                            else if (op.IsCommitMarker)
                             {
                                 WriteCommitMarker(op);
                                 _offset += CommitMarkerSize;
@@ -251,6 +268,44 @@ namespace TrimDB.Core.KVLog
             await tcs.Task; // wait for it to be flushed to disk
         }
 
+        public override async Task LogBatchBegin()
+        {
+            var tcs = new TaskCompletionSource<long>();
+            var op = new PutOperation
+            {
+                IsBatchBegin = true,
+                LoggingCompleted = tcs,
+            };
+            await _channel.Writer.WriteAsync(op);
+            await tcs.Task;
+        }
+
+        public override async Task LogBatchCommit()
+        {
+            var tcs = new TaskCompletionSource<long>();
+            var op = new PutOperation
+            {
+                IsBatchCommit = true,
+                LoggingCompleted = tcs,
+            };
+            await _channel.Writer.WriteAsync(op);
+            await tcs.Task;
+        }
+
+        private void WriteBatchBeginMarker()
+        {
+            var span = _kvLogWriter.GetSpan(BatchSentinelSize);
+            BinaryPrimitives.WriteInt32LittleEndian(span, BatchBeginSentinel);
+            _kvLogWriter.Advance(BatchSentinelSize);
+        }
+
+        private void WriteBatchCommitMarker()
+        {
+            var span = _kvLogWriter.GetSpan(BatchSentinelSize);
+            BinaryPrimitives.WriteInt32LittleEndian(span, BatchCommitSentinel);
+            _kvLogWriter.Advance(BatchSentinelSize);
+        }
+
         public override async Task<Memory<byte>> ReadValueAtLocation(long offset)
         {
             // Ensure PipeWriter has flushed before reading from a separate stream
@@ -308,6 +363,10 @@ namespace TrimDB.Core.KVLog
                         lastCommitted = BinaryPrimitives.ReadInt64LittleEndian(longBuf);
                         pos += CommitMarkerSize;
                     }
+                    else if (keyLen == BatchBeginSentinel || keyLen == BatchCommitSentinel)
+                    {
+                        pos += BatchSentinelSize;
+                    }
                     else if (keyLen > 0)
                     {
                         // Skip past: key(keyLen) + deleted(1) + valLen(4)
@@ -356,10 +415,11 @@ namespace TrimDB.Core.KVLog
 
             var intBuffer = new byte[sizeof(int)];
             var currentPos = committedOffset;
+            List<PutOperation>? batchBuffer = null;
 
             while (currentPos < _offset)
             {
-                // Read key length (or commit marker sentinel)
+                // Read key length (or sentinel)
                 if (await fs.ReadAsync(intBuffer.AsMemory()) < sizeof(int)) break;
                 var keySize = BinaryPrimitives.ReadInt32LittleEndian(intBuffer);
 
@@ -368,6 +428,25 @@ namespace TrimDB.Core.KVLog
                     // Skip commit marker payload (8 bytes)
                     fs.Seek(sizeof(long), SeekOrigin.Current);
                     currentPos += CommitMarkerSize;
+                    continue;
+                }
+
+                if (keySize == BatchBeginSentinel)
+                {
+                    currentPos += BatchSentinelSize;
+                    batchBuffer = new List<PutOperation>();
+                    continue;
+                }
+
+                if (keySize == BatchCommitSentinel)
+                {
+                    currentPos += BatchSentinelSize;
+                    if (batchBuffer != null)
+                    {
+                        foreach (var op in batchBuffer)
+                            yield return op;
+                        batchBuffer = null;
+                    }
                     continue;
                 }
 
@@ -394,13 +473,23 @@ namespace TrimDB.Core.KVLog
                 // Advance position: keyLen(4) + key(N) + deleted(1) + valLen(4) + val(N)
                 currentPos += sizeof(int) + keySize + 1 + sizeof(int) + valSize;
 
-                yield return new PutOperation
+                var putOp = new PutOperation
                 {
                     Key = keyBuffer,
                     Value = valBuffer,
                     Deleted = isDeleted,
                 };
+
+                if (batchBuffer != null)
+                {
+                    batchBuffer.Add(putOp);
+                }
+                else
+                {
+                    yield return putOp;
+                }
             }
+            // If batchBuffer is non-null here, the batch was incomplete — discard it
         }
 
         public override async ValueTask DisposeAsync()

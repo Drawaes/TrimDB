@@ -37,5 +37,21 @@ namespace TrimDB.Core.Storage.Layers
 
             return new SearchResultValue() { Result = SearchResult.NotFound };
         }
+
+        public override async ValueTask<ValueLease> GetWithLeaseAsync(ReadOnlyMemory<byte> key, ulong hash)
+        {
+            var tfs = _tableFiles;
+
+            for (var i = tfs.Length - 1; i >= 0; i--)
+            {
+                var lease = await tfs[i].GetWithLeaseAsync(key, hash);
+                if (lease.IsFound || lease.IsDeleted)
+                {
+                    return lease;
+                }
+            }
+
+            return ValueLease.Empty;
+        }
     }
 }

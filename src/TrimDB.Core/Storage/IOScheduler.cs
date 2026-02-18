@@ -27,6 +27,8 @@ namespace TrimDB.Core.Storage
         private readonly Func<StorageLayer, bool> _sortedStrategy;
         private readonly Func<StorageLayer, bool> _unsortedStrategy;
         private readonly SemaphoreSlim _compactionSignal = new SemaphoreSlim(0);
+        private readonly Channel<TaskCompletionSource<bool>> _flushBarriers = Channel.CreateUnbounded<TaskCompletionSource<bool>>();
+        private readonly Channel<TaskCompletionSource<bool>> _compactionComplete = Channel.CreateUnbounded<TaskCompletionSource<bool>>();
 
         public IOScheduler(int maxSkiplistBacklog, UnsortedStorageLayer storageLayer, TrimDatabase database, ILogger? logger = null)
         {
@@ -59,6 +61,21 @@ namespace TrimDB.Core.Storage
         }
 
         public ValueTask ScheduleSave(MemoryTable memoryTable) => _channel.Writer.WriteAsync(memoryTable);
+
+        public async Task FlushBarrierAsync()
+        {
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            await _flushBarriers.Writer.WriteAsync(tcs);
+            await tcs.Task;
+        }
+
+        public async Task ForceCompactAsync()
+        {
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            await _compactionComplete.Writer.WriteAsync(tcs);
+            _compactionSignal.Release();
+            await tcs.Task;
+        }
 
         private async Task CheckForMerge()
         {
@@ -106,6 +123,10 @@ namespace TrimDB.Core.Storage
                             }
                         }
                     } while (mergeHappened);
+
+                    // Notify any compaction barrier waiters
+                    while (_compactionComplete.Reader.TryRead(out var tcs))
+                        tcs.TrySetResult(true);
                 }
                 catch (OperationCanceledException) when (_token.IsCancellationRequested)
                 {
@@ -316,6 +337,10 @@ namespace TrimDB.Core.Storage
 
                     // Signal compaction that a new SSTable is available
                     _compactionSignal.Release();
+
+                    // Notify any flush barrier waiters
+                    while (_flushBarriers.Reader.TryRead(out var tcs))
+                        tcs.TrySetResult(true);
                 }
                 catch (Exception ex)
                 {

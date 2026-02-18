@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="TrimDB.Core.Facts" />
+    <InternalsVisibleTo Include="TrimDB.Benchmarks" />
   </ItemGroup>
 
   <ItemGroup>
