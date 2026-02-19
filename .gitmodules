@@ -1,0 +1,3 @@
+[submodule "src/TrimDB.Nethermind/nethermind"]
+	path = src/TrimDB.Nethermind/nethermind
+	url = https://github.com/Drawaes/nethermind

@@ -1,7 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="*.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\TrimDB.Core\TrimDB.Core.csproj" />
+    <ProjectReference Include="nethermind\src\Nethermind\Nethermind.Db\Nethermind.Db.csproj" />
+    <ProjectReference Include="nethermind\src\Nethermind\Nethermind.Api\Nethermind.Api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Autofac" VersionOverride="9.0.0" />
   </ItemGroup>
 
 </Project>

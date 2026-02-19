@@ -1,47 +1,54 @@
 using System;
+using Nethermind.Core;
 using TrimDB.Core;
-using TrimDB.Nethermind.Interfaces;
 
-namespace TrimDB.Nethermind
+namespace TrimDB.Nethermind;
+
+public sealed class TrimDbBatch : IWriteBatch
 {
-    public sealed class TrimDbBatch : IWriteBatch
+    private readonly TrimDatabase _db;
+    private WriteBatch? _batch = new();
+
+    internal TrimDbBatch(TrimDatabase db)
     {
-        private readonly TrimDatabase _db;
-        private WriteBatch? _batch = new();
+        _db = db;
+    }
 
-        internal TrimDbBatch(TrimDatabase db)
-        {
-            _db = db;
-        }
+    public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+    {
+        if (_batch is null) throw new ObjectDisposedException(nameof(TrimDbBatch));
 
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-        {
-            if (_batch == null) throw new ObjectDisposedException(nameof(TrimDbBatch));
-
-            if (value == null)
-                _batch.Delete(key);
-            else
-                _batch.Put(key, value);
-        }
-
-        public void Remove(ReadOnlySpan<byte> key)
-        {
-            if (_batch == null) throw new ObjectDisposedException(nameof(TrimDbBatch));
+        if (value is null)
             _batch.Delete(key);
-        }
+        else
+            _batch.Put(key, value);
+    }
 
-        public void Clear()
-        {
-            _batch = new WriteBatch();
-        }
+    public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+    {
+        if (_batch is null) throw new ObjectDisposedException(nameof(TrimDbBatch));
 
-        public void Dispose()
+        // TrimDB has no native merge — fall back to last-write-wins Put
+        _batch.Put(key, value.ToArray());
+    }
+
+    public void Remove(ReadOnlySpan<byte> key)
+    {
+        if (_batch is null) throw new ObjectDisposedException(nameof(TrimDbBatch));
+        _batch.Delete(key);
+    }
+
+    public void Clear()
+    {
+        _batch = new WriteBatch();
+    }
+
+    public void Dispose()
+    {
+        if (_batch is not null)
         {
-            if (_batch != null)
-            {
-                _db.ApplyBatchAsync(_batch).GetAwaiter().GetResult();
-                _batch = null;
-            }
+            _db.ApplyBatchAsync(_batch).GetAwaiter().GetResult();
+            _batch = null;
         }
     }
 }

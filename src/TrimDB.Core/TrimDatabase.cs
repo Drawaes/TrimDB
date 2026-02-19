@@ -312,9 +312,6 @@ namespace TrimDB.Core
             return SearchResult.NotFound;
         }
 
-        public ValueTask<bool> DeleteAsync(ReadOnlySpan<byte> key, WriteFlags flags)
-            => DeleteAsync(key); // flags ignored for MVP
-
         public ValueTask<bool> DeleteAsync(ReadOnlySpan<byte> key)
         {
             if (Volatile.Read(ref _disposed) == 1) throw new ObjectDisposedException(nameof(TrimDatabase));
@@ -356,9 +353,6 @@ namespace TrimDB.Core
                 await SwitchInMemoryTable(sl);
             }
         }
-
-        public Task PutAsync(ReadOnlyMemory<byte> key, ReadOnlyMemory<byte> value, WriteFlags flags)
-            => PutAsync(key, value); // flags ignored for MVP
 
         public async Task PutAsync(ReadOnlyMemory<byte> key, ReadOnlyMemory<byte> value)
         {

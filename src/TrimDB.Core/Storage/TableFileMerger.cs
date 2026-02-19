@@ -45,9 +45,10 @@ namespace TrimDB.Core.Storage
             if (!_hasInitialMove)
             {
                 _hasInitialMove = true;
-                for (var i = 0; i < _activeCount; i++)
+                for (var i = _activeCount - 1; i >= 0; i--)
                 {
-                    await _memoryItems[i]!.MoveNextAsync();
+                    if (!await _memoryItems[i]!.MoveNextAsync())
+                        RemoveIterator(_memoryItems[i]!);
                 }
             }
             else
